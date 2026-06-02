@@ -2,15 +2,13 @@ import { Component, inject, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { BlogPost } from '../core/models/blog';
 import { BlogService } from '../core/services/blog.service';
-import { ContentSection } from '../core/models/content-section';
-import { ContentSectionsService } from '../core/services/content-sections.service';
 import { AdminShellComponent } from '../layout/admin-shell.component';
 
 @Component({
   selector: 'app-blog-list-page',
   imports: [RouterLink, AdminShellComponent],
   template: `
-    <app-admin-shell [sections]="sections()">
+    <app-admin-shell>
       <div class="mx-auto max-w-6xl px-5 py-8 sm:px-8">
         <header class="flex flex-wrap items-end justify-between gap-4">
           <div><p class="eyebrow">Blog</p><h1 class="mt-1 font-display text-5xl font-bold tracking-tight text-blue-950">Artículos</h1><p class="mt-3 text-sm text-blue-950/55">Escribe, revisa y publica contenido para tus clientes.</p></div>
@@ -33,13 +31,11 @@ import { AdminShellComponent } from '../layout/admin-shell.component';
 })
 export class BlogListPageComponent {
   private readonly api = inject(BlogService);
-  private readonly content = inject(ContentSectionsService);
   private readonly router = inject(Router);
   readonly posts = signal<BlogPost[]>([]);
-  readonly sections = signal<ContentSection[]>([]);
   readonly error = signal('');
 
-  constructor() { this.load(); this.content.list().subscribe({ next: (sections) => this.sections.set(sections) }); }
+  constructor() { this.load(); }
   load(): void { this.api.list().subscribe({ next: (posts) => this.posts.set(posts), error: () => this.error.set('No se pudo cargar el blog.') }); }
   create(): void {
     this.api.create({ title: 'Nuevo artículo', excerpt: 'Escribe un resumen breve para tus lectores.', coverImageUrl: null, blocks: [{ id: crypto.randomUUID(), type: 'paragraph', data: { text: 'Comienza a escribir aquí.' } }] })

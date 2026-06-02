@@ -1,10 +1,11 @@
 export interface ComparisonBadge {
-  id: string;
+  id: number;
   feature: string;
   category: string;
   purifrezeText: string;
   garrafonesText: string;
   isVisible: boolean;
+  sortOrder: number;
 }
 
 export const comparisonCategories = [

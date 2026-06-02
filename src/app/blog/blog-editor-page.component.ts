@@ -5,8 +5,6 @@ import { ActivatedRoute } from '@angular/router';
 import { finalize } from 'rxjs';
 import { BlogBlock, BlogPost } from '../core/models/blog';
 import { BlogService } from '../core/services/blog.service';
-import { ContentSection } from '../core/models/content-section';
-import { ContentSectionsService } from '../core/services/content-sections.service';
 import { MediaService } from '../core/services/media.service';
 import { MediaUrlService } from '../core/services/media-url.service';
 import { AdminShellComponent } from '../layout/admin-shell.component';
@@ -15,7 +13,7 @@ import { AdminShellComponent } from '../layout/admin-shell.component';
   selector: 'app-blog-editor-page',
   imports: [FormsModule, AdminShellComponent],
   template: `
-    <app-admin-shell [sections]="sections()">
+    <app-admin-shell>
       @if (post(); as article) {
         <div class="mx-auto max-w-7xl px-5 py-7 sm:px-8">
           <header class="flex flex-wrap items-center justify-between gap-3">
@@ -77,9 +75,9 @@ import { AdminShellComponent } from '../layout/admin-shell.component';
   `,
 })
 export class BlogEditorPageComponent {
-  private readonly api = inject(BlogService); private readonly content = inject(ContentSectionsService); private readonly media = inject(MediaService); private readonly urls = inject(MediaUrlService); private readonly route = inject(ActivatedRoute);
-  readonly post = signal<BlogPost | null>(null); readonly sections = signal<ContentSection[]>([]); readonly saving = signal(false); readonly uploading = signal(false); readonly message = signal(''); readonly failed = signal(false);
-  constructor() { this.api.find(Number(this.route.snapshot.paramMap.get('id'))).subscribe({ next: (post) => this.post.set(post), error: () => this.notify('No se pudo cargar el artículo.', true) }); this.content.list().subscribe({ next: (sections) => this.sections.set(sections) }); }
+  private readonly api = inject(BlogService); private readonly media = inject(MediaService); private readonly urls = inject(MediaUrlService); private readonly route = inject(ActivatedRoute);
+  readonly post = signal<BlogPost | null>(null); readonly saving = signal(false); readonly uploading = signal(false); readonly message = signal(''); readonly failed = signal(false);
+  constructor() { this.api.find(Number(this.route.snapshot.paramMap.get('id'))).subscribe({ next: (post) => this.post.set(post), error: () => this.notify('No se pudo cargar el artículo.', true) }); }
   save(after?: (post: BlogPost) => void): void { const post = this.post(); if (!post || this.saving()) return; this.saving.set(true); const draft = { title: post.title, excerpt: post.excerpt, coverImageUrl: post.coverImageUrl, blocks: post.blocks }; this.api.update(post.id, draft).pipe(finalize(() => this.saving.set(false))).subscribe({ next: (saved) => { this.post.set(saved); this.notify('Borrador guardado.'); after?.(saved); }, error: (error: HttpErrorResponse) => this.notify(error.error?.message ?? 'No se pudo guardar.', true) }); }
   publish(): void { this.save((post) => this.api.publish(post.id).subscribe({ next: (published) => { this.post.set(published); this.notify('Artículo publicado.'); }, error: () => this.notify('No se pudo publicar.', true) })); }
   unpublish(): void { const post = this.post(); if (!post) return; this.api.unpublish(post.id).subscribe({ next: (draft) => { this.post.set(draft); this.notify('Artículo retirado.'); }, error: () => this.notify('No se pudo retirar.', true) }); }

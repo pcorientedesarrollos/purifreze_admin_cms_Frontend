@@ -2,6 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { finalize } from 'rxjs';
 import { CmsVideo } from '../core/models/video';
+import { tempId } from '../core/models/temp-id';
 import { MediaService } from '../core/services/media.service';
 import { MediaUrlService } from '../core/services/media-url.service';
 
@@ -78,7 +79,7 @@ export class VideosEditorComponent {
     })).subscribe({
       next: (uploaded) => this.videosChange.emit([
         ...this.videos(),
-        { id: crypto.randomUUID(), title: file.name.replace(/\.mp4$/i, ''), url: uploaded.url, vertical: false, isVisible: true },
+        { id: tempId(), title: file.name.replace(/\.mp4$/i, ''), url: uploaded.url, vertical: false, isVisible: true, sortOrder: this.videos().length },
       ]),
       error: () => this.error.set('No se pudo subir el video. Verifica que sea MP4 y no supere 25 MB.'),
     });

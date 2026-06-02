@@ -3,291 +3,301 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
-import { catchError, forkJoin, of } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { catchError, forkJoin, of } from 'rxjs';
 import { ComparisonBadge } from '../core/models/comparison';
-import { ContentSection, SectionDraft } from '../core/models/content-section';
 import { FaqItem } from '../core/models/faq';
-import { editorForSection, sectionCatalog, SectionCatalogItem } from '../core/models/section-catalog';
-import { CmsVideo } from '../core/models/video';
+import { SectionCatalogItem, sectionByKey, sectionCatalog } from '../core/models/section-catalog';
+import { isTempId } from '../core/models/temp-id';
 import { CmsTestimonial } from '../core/models/testimonial';
-import { ContentSectionsService } from '../core/services/content-sections.service';
+import { CmsVideo } from '../core/models/video';
+import { ComparisonRowsService, CreateComparisonRow, UpdateComparisonRow } from '../core/services/comparison-rows.service';
+import { CreateFaqItem, FaqItemsService, UpdateFaqItem } from '../core/services/faq-items.service';
+import { CreateTestimonial, TestimonialsService, UpdateTestimonial } from '../core/services/testimonials.service';
+import { CreateVideo, UpdateVideo, VideosService } from '../core/services/videos.service';
 import { MediaService } from '../core/services/media.service';
 import { AdminShellComponent } from '../layout/admin-shell.component';
 import { SaveBarComponent, SaveStatus } from '../layout/save-bar.component';
 import { ComparisonEditorComponent } from './comparison-editor.component';
 import { FaqEditorComponent } from './faq-editor.component';
-import { GenericEditorComponent } from './generic-editor.component';
-import { VideosEditorComponent } from './videos-editor.component';
 import { TestimonialsEditorComponent } from './testimonials-editor.component';
+import { VideosEditorComponent } from './videos-editor.component';
+
+type Identified = { id: number };
 
 @Component({
   selector: 'app-section-editor-page',
-  imports: [CommonModule, FormsModule, AdminShellComponent, SaveBarComponent, GenericEditorComponent, ComparisonEditorComponent, FaqEditorComponent, VideosEditorComponent, TestimonialsEditorComponent],
+  imports: [CommonModule, FormsModule, AdminShellComponent, SaveBarComponent, ComparisonEditorComponent, FaqEditorComponent, VideosEditorComponent, TestimonialsEditorComponent],
   template: `
-    <app-admin-shell [sections]="sections()" (create)="createOpen.set(true)">
+    <app-admin-shell>
       <div class="mx-auto max-w-6xl px-5 py-7 sm:px-8 sm:py-9">
         @if (loading()) {
           <div class="grid min-h-[55vh] place-items-center text-blue-700"><i class="fa-solid fa-circle-notch animate-spin text-3xl"></i></div>
-        } @else if (draft(); as section) {
+        } @else if (section(); as s) {
           <section class="mb-6 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p class="eyebrow">Seccion de la landing</p>
-              <h1 class="mt-1 font-display text-[clamp(2rem,4vw,3.4rem)] font-bold leading-none tracking-[-.045em] text-blue-950">{{ section.label }}</h1>
-              <p class="mt-3 max-w-2xl text-sm leading-relaxed text-blue-950/55">Edita el contenido publicado de esta sección. El cambio llega a la landing cuando presionas guardar.</p>
+              <p class="eyebrow">Sección de la landing</p>
+              <h1 class="mt-1 font-display text-[clamp(2rem,4vw,3.4rem)] font-bold leading-none tracking-[-.045em] text-blue-950">{{ s.label }}</h1>
+              <p class="mt-3 max-w-2xl text-sm leading-relaxed text-blue-950/55">{{ s.description }}</p>
             </div>
-            <span class="rounded-full px-3 py-1.5 text-xs font-extrabold" [class.bg-blue-100]="section.isVisible" [class.text-blue-700]="section.isVisible" [class.bg-slate-200]="!section.isVisible" [class.text-slate-600]="!section.isVisible">
-              {{ section.isVisible ? 'Visible en landing' : 'Oculta en landing' }}
-            </span>
           </section>
 
           <section class="editor-surface">
-            <app-generic-editor
-              [section]="section"
-              [showJson]="editorFor(section.key) === 'generic'"
-              [json]="jsonText()"
-              (sectionChange)="updateDraft($event)"
-              (jsonChange)="updateJson($event)"
-            />
+            @switch (s.editor) {
+              @case ('testimonials') {
+                <app-testimonials-editor [testimonials]="testimonials()" (testimonialsChange)="onTestimonialsChange($event)" (queuedDelete)="queueDelete($event)" />
+              }
+              @case ('videos') {
+                <app-videos-editor [videos]="videos()" (videosChange)="onVideosChange($event)" (queuedDelete)="queueDelete($event)" />
+              }
+              @case ('comparison') {
+                <app-comparison-editor [badges]="badges()" (badgesChange)="onBadgesChange($event)" />
+              }
+              @case ('faq') {
+                <app-faq-editor [faqs]="faqs()" (faqsChange)="onFaqsChange($event)" />
+              }
+            }
           </section>
-
-          @if (editorFor(section.key) === 'comparison') {
-            <section class="editor-surface mt-5">
-              <app-comparison-editor [badges]="comparisonBadges()" (badgesChange)="updateBadges($event)" />
-            </section>
-          }
-
-          @if (editorFor(section.key) === 'faq') {
-            <section class="editor-surface mt-5">
-              <app-faq-editor [faqs]="faqs()" (faqsChange)="updateFaqs($event)" />
-            </section>
-          }
-
-          @if (editorFor(section.key) === 'videos') {
-            <section class="editor-surface mt-5">
-              <app-videos-editor [videos]="videos()" (videosChange)="updateVideos($event)" (queuedDelete)="queueDelete($event)" />
-            </section>
-          }
-          @if (editorFor(section.key) === 'testimonials') {
-            <section class="editor-surface mt-5">
-              <app-testimonials-editor [testimonials]="testimonials()" (testimonialsChange)="updateTestimonials($event)" (queuedDelete)="queueDelete($event)" />
-            </section>
-          }
         } @else {
           <div class="grid min-h-[55vh] place-items-center border border-dashed border-blue-200 bg-blue-50/60 p-8 text-center">
             <div>
               <i class="fa-regular fa-folder-open text-4xl text-blue-400"></i>
-              <h1 class="mt-4 font-display text-3xl font-bold tracking-tight text-blue-950">No hay secciones todavía</h1>
-              <button type="button" class="primary-button mt-5" (click)="createOpen.set(true)">Crear primera sección</button>
+              <h1 class="mt-4 font-display text-3xl font-bold tracking-tight text-blue-950">Sección no encontrada</h1>
             </div>
           </div>
         }
       </div>
 
-      @if (draft()) {
+      @if (section()) {
         <app-save-bar [status]="saveStatus()" [errorMessage]="saveError()" (save)="save()" />
       }
     </app-admin-shell>
-
-    @if (createOpen()) {
-      <div class="fixed inset-0 z-50 grid place-items-center bg-blue-950/35 p-4" (click)="createOpen.set(false)">
-        <section class="w-full max-w-2xl rounded-2xl bg-[#fbfdff] p-6 shadow-2xl shadow-blue-950/25" (click)="$event.stopPropagation()">
-          <div class="flex items-start justify-between gap-4">
-            <div><p class="eyebrow">Nueva sección</p><h2 class="mt-1 font-display text-2xl font-bold tracking-tight text-blue-950">¿Qué quieres agregar?</h2></div>
-            <button type="button" class="text-blue-950/45 hover:text-blue-950" (click)="createOpen.set(false)"><i class="fa-solid fa-xmark"></i></button>
-          </div>
-          <p class="mt-2 text-sm leading-relaxed text-blue-950/55">Elige una sección. Podrás personalizar su contenido después de agregarla.</p>
-          <div class="mt-5 grid gap-3 sm:grid-cols-3">
-            @for (item of catalog; track item.key) {
-              <button
-                type="button"
-                class="rounded-2xl border border-blue-100 bg-white p-4 text-left transition hover:border-blue-300 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-45"
-                [disabled]="hasSection(item.key) || creating()"
-                (click)="create(item)"
-              >
-                <i class="fa-solid text-xl text-blue-500" [class]="item.icon"></i>
-                <strong class="mt-4 block text-sm text-blue-950">{{ item.label }}</strong>
-                <span class="mt-1 block text-xs leading-relaxed text-blue-950/55">{{ item.description }}</span>
-                <span class="mt-3 block text-[10px] font-extrabold uppercase tracking-[.14em]" [class.text-blue-400]="hasSection(item.key)" [class.text-blue-700]="!hasSection(item.key)">
-                  {{ hasSection(item.key) ? 'Ya agregada' : creating() ? 'Agregando...' : 'Agregar' }}
-                </span>
-              </button>
-            }
-          </div>
-          @if (createError()) { <p class="mt-3 text-sm font-bold text-red-600">{{ createError() }}</p> }
-          <div class="mt-6 flex justify-end">
-            <button type="button" class="secondary-button" (click)="createOpen.set(false)">Cerrar</button>
-          </div>
-        </section>
-      </div>
-    }
   `,
 })
 export class SectionEditorPageComponent {
-  private readonly api = inject(ContentSectionsService);
+  private readonly testimonialsApi = inject(TestimonialsService);
+  private readonly videosApi = inject(VideosService);
+  private readonly comparisonApi = inject(ComparisonRowsService);
+  private readonly faqApi = inject(FaqItemsService);
   private readonly media = inject(MediaService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly destroyRef = inject(DestroyRef);
 
-  readonly sections = signal<ContentSection[]>([]);
-  readonly draft = signal<SectionDraft | null>(null);
-  readonly jsonText = signal('{}');
-  readonly comparisonBadges = signal<ComparisonBadge[]>([]);
-  readonly faqs = signal<FaqItem[]>([]);
-  readonly videos = signal<CmsVideo[]>([]);
+  readonly section = signal<SectionCatalogItem | null>(null);
+
   readonly testimonials = signal<CmsTestimonial[]>([]);
+  readonly videos = signal<CmsVideo[]>([]);
+  readonly badges = signal<ComparisonBadge[]>([]);
+  readonly faqs = signal<FaqItem[]>([]);
+
+  private originalTestimonials: CmsTestimonial[] = [];
+  private originalVideos: CmsVideo[] = [];
+  private originalBadges: ComparisonBadge[] = [];
+  private originalFaqs: FaqItem[] = [];
+
   readonly pendingDelete = signal<string[]>([]);
   readonly loading = signal(true);
   readonly saveStatus = signal<SaveStatus>('idle');
   readonly saveError = signal('');
-  readonly createOpen = signal(false);
-  readonly creating = signal(false);
-  readonly createError = signal('');
-  readonly catalog = sectionCatalog;
 
   constructor() {
-    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(() => this.load());
-  }
-
-  load(): void {
-    this.loading.set(true);
-    this.api.list().subscribe({
-      next: (sections) => {
-        this.sections.set(sections);
-        const key = this.route.snapshot.paramMap.get('key');
-        if (!key && sections[0]) {
-          void this.router.navigate(['/sections', sections[0].key], { replaceUrl: true });
-          return;
-        }
-        this.setActive(sections.find((section) => section.key === key) ?? sections[0] ?? null);
-        this.loading.set(false);
-      },
-      error: () => {
-        this.loading.set(false);
-        this.saveError.set('No se pudo conectar con la API de contenido.');
-        this.saveStatus.set('error');
-      },
+    this.route.paramMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const key = params.get('key');
+      const found = key ? sectionByKey(key) : sectionCatalog[0];
+      if (!key && found) {
+        void this.router.navigate(['/sections', found.key], { replaceUrl: true });
+        return;
+      }
+      this.section.set(found ?? null);
+      if (found) this.load(found);
+      else this.loading.set(false);
     });
   }
 
-  setActive(section: ContentSection | null): void {
-    if (!section) {
-      this.draft.set(null);
-      return;
-    }
-    const draft = structuredClone(section) as SectionDraft;
-    this.draft.set(draft);
-    this.jsonText.set(JSON.stringify(draft.content ?? {}, null, 2));
-    this.comparisonBadges.set(this.readArray<ComparisonBadge>(draft.content, 'badges'));
-    this.faqs.set(this.readArray<FaqItem>(draft.content, 'faqs'));
-    this.videos.set(this.readArray<CmsVideo>(draft.content, 'videos'));
-    this.testimonials.set(this.readArray<CmsTestimonial>(draft.content, 'testimonials'));
-    this.pendingDelete.set([]);
+  private load(section: SectionCatalogItem): void {
+    this.loading.set(true);
     this.saveError.set('');
     this.saveStatus.set('idle');
+    this.pendingDelete.set([]);
+    switch (section.editor) {
+      case 'testimonials':
+        this.testimonialsApi.list().subscribe({
+          next: (items) => { this.originalTestimonials = items; this.testimonials.set(structuredClone(items)); this.loading.set(false); },
+          error: () => this.failLoad(),
+        });
+        break;
+      case 'videos':
+        this.videosApi.list().subscribe({
+          next: (items) => { this.originalVideos = items; this.videos.set(structuredClone(items)); this.loading.set(false); },
+          error: () => this.failLoad(),
+        });
+        break;
+      case 'comparison':
+        this.comparisonApi.list().subscribe({
+          next: (items) => { this.originalBadges = items; this.badges.set(structuredClone(items)); this.loading.set(false); },
+          error: () => this.failLoad(),
+        });
+        break;
+      case 'faq':
+        this.faqApi.list().subscribe({
+          next: (items) => { this.originalFaqs = items; this.faqs.set(structuredClone(items)); this.loading.set(false); },
+          error: () => this.failLoad(),
+        });
+        break;
+    }
   }
 
-  updateDraft(section: SectionDraft): void {
-    this.draft.set(section);
-    this.markDirty();
+  private failLoad(): void {
+    this.loading.set(false);
+    this.saveError.set('No se pudo conectar con la API.');
+    this.saveStatus.set('error');
   }
 
-  updateJson(json: string): void {
-    this.jsonText.set(json);
-    this.markDirty();
-  }
-
-  updateBadges(badges: ComparisonBadge[]): void {
-    this.comparisonBadges.set(badges);
-    this.mergeContent({ badges });
-  }
-
-  updateVideos(videos: CmsVideo[]): void {
-    this.videos.set(videos);
-    this.mergeContent({ videos });
-  }
-
-  updateFaqs(faqs: FaqItem[]): void {
-    this.faqs.set(faqs);
-    this.mergeContent({ faqs });
-  }
-
-  updateTestimonials(testimonials: CmsTestimonial[]): void {
-    this.testimonials.set(testimonials);
-    this.mergeContent({ testimonials });
-  }
+  onTestimonialsChange(items: CmsTestimonial[]): void { this.testimonials.set(items); this.markDirty(); }
+  onVideosChange(items: CmsVideo[]): void { this.videos.set(items); this.markDirty(); }
+  onBadgesChange(items: ComparisonBadge[]): void { this.badges.set(items); this.markDirty(); }
+  onFaqsChange(items: FaqItem[]): void { this.faqs.set(items); this.markDirty(); }
 
   queueDelete(filename: string): void {
-    this.pendingDelete.update((items) => [...new Set([...items, filename])]);
+    this.pendingDelete.update((list) => [...new Set([...list, filename])]);
   }
 
   save(): void {
-    const draft = this.draft();
-    if (!draft || this.saveStatus() === 'saving') return;
-    let content = draft.content ?? {};
-    if (this.editorFor(draft.key) === 'generic') {
-      try {
-        content = JSON.parse(this.jsonText()) as Record<string, unknown>;
-      } catch {
-        this.saveError.set('El contenido avanzado no contiene JSON válido.');
-        this.saveStatus.set('error');
-        return;
-      }
-    }
+    const section = this.section();
+    if (!section || this.saveStatus() === 'saving') return;
     this.saveStatus.set('saving');
     this.saveError.set('');
-    this.api.update(draft.key, {
-      label: draft.label,
-      title: draft.title,
-      description: draft.description,
-      content,
-      sortOrder: draft.sortOrder,
-      isVisible: draft.isVisible,
-    }).subscribe({
-      next: (section) => {
-        this.sections.update((items) => items.map((item) => (item.key === section.key ? section : item)));
-        this.deleteQueuedFiles();
-        this.setActive(section);
+    switch (section.editor) {
+      case 'testimonials':
+        this.saveTestimonials();
+        break;
+      case 'videos':
+        this.saveVideos();
+        break;
+      case 'comparison':
+        this.saveBadges();
+        break;
+      case 'faq':
+        this.saveFaqs();
+        break;
+    }
+  }
+
+  private saveTestimonials(): void {
+    const draft = this.testimonials();
+    const original = this.originalTestimonials;
+    const createOps = draft.filter((d) => isTempId(d.id)).map((d) => {
+      const dto: CreateTestimonial = { name: d.name, label: d.label, videoUrl: d.videoUrl, featured: d.featured, isVisible: d.isVisible };
+      return this.testimonialsApi.create(dto);
+    });
+    const updateOps = draft.filter((d) => !isTempId(d.id)).map((d) => {
+      const orig = original.find((o) => o.id === d.id);
+      if (!orig) return null;
+      const patch = this.diffPatch<CmsTestimonial, UpdateTestimonial>(orig, d, ['name', 'label', 'videoUrl', 'featured', 'isVisible']);
+      return patch ? this.testimonialsApi.update(d.id, patch) : null;
+    }).filter((op): op is NonNullable<typeof op> => op !== null);
+    const deleteOps = this.deletedIds(original, draft).map((id) => this.testimonialsApi.delete(id));
+    this.runSave([...createOps, ...updateOps, ...deleteOps], () => {
+      const finalIds = draft.map((d) => isTempId(d.id) ? null : d.id).filter((id): id is number => id !== null);
+      const reorder = this.shouldReorder(original, draft) && finalIds.length === draft.length ? this.testimonialsApi.reorder(finalIds) : null;
+      this.finishSave(reorder, () => this.load(this.section()!));
+    });
+  }
+
+  private saveVideos(): void {
+    const draft = this.videos();
+    const original = this.originalVideos;
+    const createOps = draft.filter((d) => isTempId(d.id)).map((d) => {
+      const dto: CreateVideo = { title: d.title, url: d.url, vertical: d.vertical, isVisible: d.isVisible };
+      return this.videosApi.create(dto);
+    });
+    const updateOps = draft.filter((d) => !isTempId(d.id)).map((d) => {
+      const orig = original.find((o) => o.id === d.id);
+      if (!orig) return null;
+      const patch = this.diffPatch<CmsVideo, UpdateVideo>(orig, d, ['title', 'url', 'vertical', 'isVisible']);
+      return patch ? this.videosApi.update(d.id, patch) : null;
+    }).filter((op): op is NonNullable<typeof op> => op !== null);
+    const deleteOps = this.deletedIds(original, draft).map((id) => this.videosApi.delete(id));
+    this.runSave([...createOps, ...updateOps, ...deleteOps], () => {
+      const finalIds = draft.map((d) => isTempId(d.id) ? null : d.id).filter((id): id is number => id !== null);
+      const reorder = this.shouldReorder(original, draft) && finalIds.length === draft.length ? this.videosApi.reorder(finalIds) : null;
+      this.finishSave(reorder, () => this.load(this.section()!));
+    });
+  }
+
+  private saveBadges(): void {
+    const draft = this.badges();
+    const original = this.originalBadges;
+    const createOps = draft.filter((d) => isTempId(d.id)).map((d) => {
+      const dto: CreateComparisonRow = { feature: d.feature, category: d.category, purifrezeText: d.purifrezeText, garrafonesText: d.garrafonesText, isVisible: d.isVisible };
+      return this.comparisonApi.create(dto);
+    });
+    const updateOps = draft.filter((d) => !isTempId(d.id)).map((d) => {
+      const orig = original.find((o) => o.id === d.id);
+      if (!orig) return null;
+      const patch = this.diffPatch<ComparisonBadge, UpdateComparisonRow>(orig, d, ['feature', 'category', 'purifrezeText', 'garrafonesText', 'isVisible']);
+      return patch ? this.comparisonApi.update(d.id, patch) : null;
+    }).filter((op): op is NonNullable<typeof op> => op !== null);
+    const deleteOps = this.deletedIds(original, draft).map((id) => this.comparisonApi.delete(id));
+    this.runSave([...createOps, ...updateOps, ...deleteOps], () => {
+      const finalIds = draft.map((d) => isTempId(d.id) ? null : d.id).filter((id): id is number => id !== null);
+      const reorder = this.shouldReorder(original, draft) && finalIds.length === draft.length ? this.comparisonApi.reorder(finalIds) : null;
+      this.finishSave(reorder, () => this.load(this.section()!));
+    });
+  }
+
+  private saveFaqs(): void {
+    const draft = this.faqs();
+    const original = this.originalFaqs;
+    const createOps = draft.filter((d) => isTempId(d.id)).map((d) => {
+      const dto: CreateFaqItem = { question: d.question, answer: d.answer, isVisible: d.isVisible };
+      return this.faqApi.create(dto);
+    });
+    const updateOps = draft.filter((d) => !isTempId(d.id)).map((d) => {
+      const orig = original.find((o) => o.id === d.id);
+      if (!orig) return null;
+      const patch = this.diffPatch<FaqItem, UpdateFaqItem>(orig, d, ['question', 'answer', 'isVisible']);
+      return patch ? this.faqApi.update(d.id, patch) : null;
+    }).filter((op): op is NonNullable<typeof op> => op !== null);
+    const deleteOps = this.deletedIds(original, draft).map((id) => this.faqApi.delete(id));
+    this.runSave([...createOps, ...updateOps, ...deleteOps], () => {
+      const finalIds = draft.map((d) => isTempId(d.id) ? null : d.id).filter((id): id is number => id !== null);
+      const reorder = this.shouldReorder(original, draft) && finalIds.length === draft.length ? this.faqApi.reorder(finalIds) : null;
+      this.finishSave(reorder, () => this.load(this.section()!));
+    });
+  }
+
+  private runSave(ops: Array<{ subscribe: Function }>, then: () => void): void {
+    if (!ops.length) { then(); return; }
+    forkJoin(ops as any).subscribe({
+      next: () => then(),
+      error: (error: HttpErrorResponse) => this.failSave(error),
+    });
+  }
+
+  private finishSave(reorder: any, then: () => void): void {
+    const flushMedia = this.flushPendingDelete();
+    const tail = reorder ?? flushMedia ?? of(null);
+    (tail as any).subscribe({
+      next: () => {
         this.saveStatus.set('saved');
+        then();
       },
-      error: (error: HttpErrorResponse) => {
-        this.saveError.set(error.error?.message ?? 'No se pudieron guardar los cambios.');
-        this.saveStatus.set('error');
-      },
+      error: (error: HttpErrorResponse) => this.failSave(error),
     });
   }
 
-  create(item: SectionCatalogItem): void {
-    if (this.hasSection(item.key)) return;
-    this.creating.set(true);
-    this.createError.set('');
-    this.api.create(item.createSection()).subscribe({
-      next: (section) => {
-        this.createOpen.set(false);
-        this.creating.set(false);
-        void this.router.navigate(['/sections', section.key]);
-      },
-      error: (error: HttpErrorResponse) => {
-        this.creating.set(false);
-        this.createError.set(error.error?.message ?? 'No se pudo crear la sección.');
-      },
-    });
+  private flushPendingDelete(): any {
+    const filenames = this.pendingDelete();
+    if (!filenames.length) return null;
+    this.pendingDelete.set([]);
+    return forkJoin(filenames.map((filename) => this.media.remove(filename).pipe(catchError(() => of({ deleted: false })))));
   }
 
-  editorFor(key: string) {
-    return editorForSection(key);
-  }
-
-  hasSection(key: string): boolean {
-    return this.sections().some((section) => section.key === key);
-  }
-
-  private mergeContent(change: Record<string, unknown>): void {
-    const draft = this.draft();
-    if (!draft) return;
-    this.draft.set({ ...draft, content: { ...(draft.content ?? {}), ...change } });
-    this.markDirty();
+  private failSave(error: HttpErrorResponse): void {
+    this.saveError.set(error.error?.message ?? 'No se pudieron guardar los cambios.');
+    this.saveStatus.set('error');
   }
 
   private markDirty(): void {
@@ -295,15 +305,27 @@ export class SectionEditorPageComponent {
     this.saveStatus.set('dirty');
   }
 
-  private deleteQueuedFiles(): void {
-    const filenames = this.pendingDelete();
-    this.pendingDelete.set([]);
-    if (!filenames.length) return;
-    forkJoin(filenames.map((filename) => this.media.remove(filename).pipe(catchError(() => of({ deleted: false }))))).subscribe();
+  private deletedIds<T extends Identified>(original: T[], draft: T[]): number[] {
+    const draftIds = new Set(draft.map((d) => d.id));
+    return original.filter((o) => !draftIds.has(o.id)).map((o) => o.id);
   }
 
-  private readArray<T>(content: Record<string, unknown> | null, key: string): T[] {
-    const value = content?.[key];
-    return Array.isArray(value) ? structuredClone(value) as T[] : [];
+  private shouldReorder<T extends Identified>(original: T[], draft: T[]): boolean {
+    const origPersisted = original.map((o) => o.id);
+    const draftPersisted = draft.filter((d) => !isTempId(d.id)).map((d) => d.id);
+    if (origPersisted.length !== draftPersisted.length) return true;
+    return origPersisted.some((id, i) => draftPersisted[i] !== id);
+  }
+
+  private diffPatch<T extends Identified, P>(original: T, draft: T, fields: (keyof T)[]): P | null {
+    const patch: Record<string, unknown> = {};
+    let changed = false;
+    for (const field of fields) {
+      if (original[field] !== draft[field]) {
+        patch[field as string] = draft[field];
+        changed = true;
+      }
+    }
+    return changed ? (patch as P) : null;
   }
 }

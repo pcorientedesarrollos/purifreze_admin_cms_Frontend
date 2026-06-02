@@ -2,6 +2,7 @@ import { Component, inject, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { finalize } from 'rxjs';
 import { CmsTestimonial } from '../core/models/testimonial';
+import { tempId } from '../core/models/temp-id';
 import { MediaService } from '../core/services/media.service';
 import { MediaUrlService } from '../core/services/media-url.service';
 
@@ -28,12 +29,12 @@ import { MediaUrlService } from '../core/services/media-url.service';
         @for (testimonial of testimonials(); track testimonial.id; let index = $index) {
           <article class="overflow-hidden rounded-2xl border border-blue-100 bg-[#fbfdff]" [class.opacity-55]="!testimonial.isVisible">
             <div class="flex justify-center bg-blue-950">
-              <video class="aspect-[9/16] h-[32rem] max-h-[70vh] max-w-full bg-blue-950 object-contain" controls preload="metadata" [src]="url.resolve(testimonial.url)"></video>
+              <video class="aspect-[9/16] h-[32rem] max-h-[70vh] max-w-full bg-blue-950 object-contain" controls preload="metadata" [src]="url.resolve(testimonial.videoUrl)"></video>
             </div>
             <div class="grid gap-3 p-4">
               <label class="field"><span>Nombre</span><input [ngModel]="testimonial.name" (ngModelChange)="update(index, { name: $event })" /></label>
               <label class="field"><span>Cargo o referencia</span><input [ngModel]="testimonial.label" (ngModelChange)="update(index, { label: $event })" /></label>
-              <label class="field"><span>Ruta del video</span><input [ngModel]="testimonial.url" (ngModelChange)="update(index, { url: $event })" /></label>
+              <label class="field"><span>Ruta del video</span><input [ngModel]="testimonial.videoUrl" (ngModelChange)="update(index, { videoUrl: $event })" /></label>
               <div class="flex flex-wrap items-center justify-between gap-3 text-sm font-bold text-blue-950">
                 <div class="flex gap-4">
                   <label class="flex items-center gap-2"><input type="checkbox" class="accent-blue-600" [ngModel]="testimonial.isVisible" (ngModelChange)="update(index, { isVisible: $event })" /> Visible</label>
@@ -78,7 +79,10 @@ export class TestimonialsEditorComponent {
     this.error.set('');
     this.uploading.set(true);
     this.media.upload(file).pipe(finalize(() => { this.uploading.set(false); input.value = ''; })).subscribe({
-      next: (uploaded) => this.testimonialsChange.emit([...this.testimonials(), { id: crypto.randomUUID(), name: file.name.replace(/\.mp4$/i, ''), label: 'Cliente Purifreze', url: uploaded.url, featured: false, isVisible: true }]),
+      next: (uploaded) => this.testimonialsChange.emit([
+        ...this.testimonials(),
+        { id: tempId(), name: file.name.replace(/\.mp4$/i, ''), label: 'Cliente Purifreze', videoUrl: uploaded.url, featured: false, isVisible: true, sortOrder: this.testimonials().length },
+      ]),
       error: () => this.error.set('No se pudo subir el testimonio. Verifica que sea MP4 y no supere 25 MB.'),
     });
   }
@@ -86,7 +90,7 @@ export class TestimonialsEditorComponent {
   remove(index: number): void {
     const item = this.testimonials()[index];
     if (!item) return;
-    const filename = this.url.uploadedFilename(item.url);
+    const filename = this.url.uploadedFilename(item.videoUrl);
     if (filename) this.queuedDelete.emit(filename);
     this.testimonialsChange.emit(this.testimonials().filter((_, current) => current !== index));
   }

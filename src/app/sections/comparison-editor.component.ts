@@ -1,6 +1,7 @@
 import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ComparisonBadge, comparisonCategories } from '../core/models/comparison';
+import { tempId } from '../core/models/temp-id';
 
 @Component({
   selector: 'app-comparison-editor',
@@ -92,7 +93,7 @@ export class ComparisonEditorComponent {
   add(): void {
     const next = [
       ...this.badges(),
-      { id: crypto.randomUUID(), feature: 'Nueva característica', category: 'Calidad', purifrezeText: 'Beneficio Purifreze', garrafonesText: 'Alternativa tradicional', isVisible: true },
+      { id: tempId(), feature: 'Nueva característica', category: 'Calidad', purifrezeText: 'Beneficio Purifreze', garrafonesText: 'Alternativa tradicional', isVisible: true, sortOrder: this.badges().length },
     ];
     this.selected.set(next.length - 1);
     this.badgesChange.emit(next);

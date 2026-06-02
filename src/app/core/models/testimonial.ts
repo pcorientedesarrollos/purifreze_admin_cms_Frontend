@@ -1,8 +1,9 @@
 export interface CmsTestimonial {
-  id: string;
+  id: number;
   name: string;
   label: string;
-  url: string;
+  videoUrl: string;
   featured: boolean;
   isVisible: boolean;
+  sortOrder: number;
 }

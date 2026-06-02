@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, inject, input, output } from '@angular/core';
+import { Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
-import { ContentSection } from '../core/models/content-section';
+import { sectionCatalog } from '../core/models/section-catalog';
 import { AuthService } from '../core/services/auth.service';
 
 @Component({
@@ -24,12 +24,9 @@ import { AuthService } from '../core/services/auth.service';
 
         <div class="relative mt-10 flex items-center justify-between">
           <p class="text-[10px] font-bold uppercase tracking-[.24em] text-blue-200">Landing page</p>
-          <button type="button" class="text-blue-200 transition hover:text-white" aria-label="Agregar sección" (click)="create.emit()">
-            <i class="fa-solid fa-plus"></i>
-          </button>
         </div>
         <nav class="relative mt-3 grid gap-1">
-          @for (section of sections(); track section.key) {
+          @for (section of catalog; track section.key) {
             <a
               [routerLink]="['/sections', section.key]"
               routerLinkActive="bg-white/12 text-white"
@@ -39,7 +36,6 @@ import { AuthService } from '../core/services/auth.service';
                 <i class="fa-regular fa-file-lines text-xs text-blue-300"></i>
                 <span class="truncate">{{ section.label }}</span>
               </span>
-              <span class="h-1.5 w-1.5 rounded-full" [class.bg-sky-300]="section.isVisible" [class.bg-blue-950]="!section.isVisible"></span>
             </a>
           }
         </nav>
@@ -67,7 +63,6 @@ import { AuthService } from '../core/services/auth.service';
 export class AdminShellComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
-  readonly sections = input<ContentSection[]>([]);
-  readonly create = output<void>();
+  readonly catalog = sectionCatalog;
   logout(): void { this.auth.logout().subscribe({ next: () => void this.router.navigate(['/login']) }); }
 }

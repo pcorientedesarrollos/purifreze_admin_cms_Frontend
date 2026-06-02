@@ -1,6 +1,7 @@
 import { Component, input, output, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { FaqItem } from '../core/models/faq';
+import { tempId } from '../core/models/temp-id';
 
 @Component({
   selector: 'app-faq-editor',
@@ -78,7 +79,7 @@ export class FaqEditorComponent {
   add(): void {
     const next = [
       ...this.faqs(),
-      { id: crypto.randomUUID(), question: 'Nueva pregunta', answer: 'Escribe aqui la respuesta.', isVisible: true },
+      { id: tempId(), question: 'Nueva pregunta', answer: 'Escribe aqui la respuesta.', isVisible: true, sortOrder: this.faqs().length },
     ];
     this.selected.set(next.length - 1);
     this.faqsChange.emit(next);

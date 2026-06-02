@@ -1,6 +1,7 @@
 export interface FaqItem {
-  id: string;
+  id: number;
   question: string;
   answer: string;
   isVisible: boolean;
+  sortOrder: number;
 }
