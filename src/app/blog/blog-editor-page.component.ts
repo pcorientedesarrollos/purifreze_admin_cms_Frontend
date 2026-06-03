@@ -1,35 +1,43 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, inject, signal } from '@angular/core';
+import { Component, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { finalize } from 'rxjs';
-import { BlogBlock, BlogPost } from '../core/models/blog';
+import { BlogBlock, BlogPost, SaveBlogPost } from '../core/models/blog';
 import { BlogService } from '../core/services/blog.service';
 import { MediaService } from '../core/services/media.service';
 import { MediaUrlService } from '../core/services/media-url.service';
 import { AdminShellComponent } from '../layout/admin-shell.component';
+
+type EditorDraft = SaveBlogPost & { status: BlogPost['status'] | null; slug: string | null };
 
 @Component({
   selector: 'app-blog-editor-page',
   imports: [FormsModule, AdminShellComponent],
   template: `
     <app-admin-shell>
-      @if (post(); as article) {
+      @if (draft(); as article) {
         <div class="mx-auto max-w-7xl px-5 py-7 sm:px-8">
           <header class="flex flex-wrap items-center justify-between gap-3">
-            <div><p class="eyebrow">Editor de blog</p><h1 class="mt-1 font-display text-4xl font-bold tracking-tight text-blue-950">{{ article.title }}</h1><p class="mt-2 text-xs font-bold text-blue-950/45">/blog/{{ article.slug }}</p></div>
+            <div>
+              <p class="eyebrow">{{ isNew() ? 'Nuevo artículo' : 'Editor de blog' }}</p>
+              <h1 class="mt-1 font-display text-4xl font-bold tracking-tight text-blue-950">{{ article.title || 'Sin título' }}</h1>
+              @if (article.slug) { <p class="mt-2 text-xs font-bold text-blue-950/45">/blog/{{ article.slug }}</p> }
+            </div>
             <div class="flex gap-2">
-              @if (article.status === 'PUBLISHED') { <button class="secondary-button" type="button" (click)="unpublish()">Retirar</button> }
-              @else { <button class="secondary-button" type="button" (click)="publish()">Publicar</button> }
-              <button class="primary-button" type="button" (click)="save()">{{ saving() ? 'Guardando...' : 'Guardar borrador' }}</button>
+              @if (!isNew()) {
+                @if (article.status === 'PUBLISHED') { <button class="secondary-button" type="button" (click)="unpublish()">Retirar</button> }
+                @else { <button class="secondary-button" type="button" (click)="publish()">Publicar</button> }
+              }
+              <button class="primary-button" type="button" [disabled]="saving() || !canSave()" (click)="save()">{{ saving() ? 'Guardando...' : (isNew() ? 'Crear artículo' : 'Guardar borrador') }}</button>
             </div>
           </header>
           @if (message()) { <p class="mt-4 text-sm font-bold" [class.text-red-600]="failed()" [class.text-green-700]="!failed()">{{ message() }}</p> }
 
           <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_minmax(340px,.82fr)]">
             <section class="editor-surface grid gap-5">
-              <label class="field"><span>Título</span><input [(ngModel)]="article.title" /></label>
-              <label class="field"><span>Extracto</span><textarea rows="3" [(ngModel)]="article.excerpt"></textarea></label>
+              <label class="field"><span>Título</span><input [(ngModel)]="article.title" placeholder="Título del artículo" required /></label>
+              <label class="field"><span>Extracto</span><textarea rows="3" [(ngModel)]="article.excerpt" placeholder="Resumen breve para el listado." required></textarea></label>
               <label class="field"><span>Imagen de portada</span><input [(ngModel)]="article.coverImageUrl" placeholder="/uploads/images/..." /></label>
               <label class="secondary-button w-fit cursor-pointer">
                 {{ uploading() ? 'Subiendo...' : 'Subir imagen' }}
@@ -56,7 +64,7 @@ import { AdminShellComponent } from '../layout/admin-shell.component';
             <aside class="editor-surface self-start xl:sticky xl:top-5">
               <p class="eyebrow">Vista previa</p>
               @if (article.coverImageUrl) { <img class="mt-4 aspect-[16/9] w-full rounded-xl object-cover" [src]="mediaUrl(article.coverImageUrl)" alt="" /> }
-              <h2 class="mt-5 font-display text-4xl font-bold leading-tight text-blue-950">{{ article.title }}</h2><p class="mt-3 text-sm leading-relaxed text-blue-950/60">{{ article.excerpt }}</p>
+              <h2 class="mt-5 font-display text-4xl font-bold leading-tight text-blue-950">{{ article.title || 'Sin título' }}</h2><p class="mt-3 text-sm leading-relaxed text-blue-950/60">{{ article.excerpt }}</p>
               <div class="prose-preview mt-6">
                 @for (block of article.blocks; track block.id) {
                   @if (block.type === 'paragraph') { <p>{{ block.data.text }}</p> }
@@ -75,16 +83,94 @@ import { AdminShellComponent } from '../layout/admin-shell.component';
   `,
 })
 export class BlogEditorPageComponent {
-  private readonly api = inject(BlogService); private readonly media = inject(MediaService); private readonly urls = inject(MediaUrlService); private readonly route = inject(ActivatedRoute);
-  readonly post = signal<BlogPost | null>(null); readonly saving = signal(false); readonly uploading = signal(false); readonly message = signal(''); readonly failed = signal(false);
-  constructor() { this.api.find(Number(this.route.snapshot.paramMap.get('id'))).subscribe({ next: (post) => this.post.set(post), error: () => this.notify('No se pudo cargar el artículo.', true) }); }
-  save(after?: (post: BlogPost) => void): void { const post = this.post(); if (!post || this.saving()) return; this.saving.set(true); const draft = { title: post.title, excerpt: post.excerpt, coverImageUrl: post.coverImageUrl, blocks: post.blocks }; this.api.update(post.id, draft).pipe(finalize(() => this.saving.set(false))).subscribe({ next: (saved) => { this.post.set(saved); this.notify('Borrador guardado.'); after?.(saved); }, error: (error: HttpErrorResponse) => this.notify(error.error?.message ?? 'No se pudo guardar.', true) }); }
-  publish(): void { this.save((post) => this.api.publish(post.id).subscribe({ next: (published) => { this.post.set(published); this.notify('Artículo publicado.'); }, error: () => this.notify('No se pudo publicar.', true) })); }
-  unpublish(): void { const post = this.post(); if (!post) return; this.api.unpublish(post.id).subscribe({ next: (draft) => { this.post.set(draft); this.notify('Artículo retirado.'); }, error: () => this.notify('No se pudo retirar.', true) }); }
-  add(type: BlogBlock['type']): void { const post = this.post(); if (!post) return; const id = crypto.randomUUID(); const block = type === 'paragraph' ? { id, type, data: { text: '' } } : type === 'heading' ? { id, type, data: { text: '', level: 2 as const } } : type === 'list' ? { id, type, data: { items: [''] } } : type === 'link' ? { id, type, data: { text: '', url: '' } } : { id, type, data: { url: '', alt: '' } }; post.blocks = [...post.blocks, block]; this.post.set({ ...post }); }
-  remove(index: number): void { const post = this.post(); if (!post) return; post.blocks.splice(index, 1); this.post.set({ ...post }); }
-  move(index: number, offset: number): void { const post = this.post(); const target = index + offset; if (!post || target < 0 || target >= post.blocks.length) return; [post.blocks[index], post.blocks[target]] = [post.blocks[target], post.blocks[index]]; this.post.set({ ...post }); }
-  upload(event: Event): void { const file = (event.target as HTMLInputElement).files?.[0]; const post = this.post(); if (!file || !post) return; this.uploading.set(true); this.media.uploadImage(file).pipe(finalize(() => this.uploading.set(false))).subscribe({ next: (image) => { post.coverImageUrl = image.url; this.post.set({ ...post }); }, error: () => this.notify('No se pudo subir la imagen.', true) }); }
-  mediaUrl(path: string): string { return this.urls.resolve(path); } splitLines(value: string): string[] { return value.split('\n'); } label(block: BlogBlock): string { return { paragraph: 'Párrafo', heading: 'Título', list: 'Lista', link: 'Enlace', image: 'Imagen' }[block.type]; }
+  private readonly api = inject(BlogService);
+  private readonly media = inject(MediaService);
+  private readonly urls = inject(MediaUrlService);
+  private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+
+  readonly postId = signal<number | null>(null);
+  readonly draft = signal<EditorDraft | null>(null);
+  readonly saving = signal(false);
+  readonly uploading = signal(false);
+  readonly message = signal('');
+  readonly failed = signal(false);
+  readonly isNew = computed(() => this.postId() === null);
+  readonly canSave = computed(() => {
+    const d = this.draft();
+    return !!d && d.title.trim().length > 0 && d.excerpt.trim().length > 0;
+  });
+
+  constructor() {
+    const idParam = this.route.snapshot.paramMap.get('id');
+    if (idParam) {
+      const id = Number(idParam);
+      this.postId.set(id);
+      this.api.find(id).subscribe({
+        next: (post) => this.draft.set({ title: post.title, excerpt: post.excerpt, coverImageUrl: post.coverImageUrl, blocks: post.blocks, status: post.status, slug: post.slug }),
+        error: () => this.notify('No se pudo cargar el artículo.', true),
+      });
+    } else {
+      this.draft.set({ title: '', excerpt: '', coverImageUrl: null, blocks: [], status: null, slug: null });
+    }
+  }
+
+  save(after?: (post: BlogPost) => void): void {
+    const draft = this.draft();
+    if (!draft || this.saving() || !this.canSave()) return;
+    this.saving.set(true);
+    const payload: SaveBlogPost = { title: draft.title.trim(), excerpt: draft.excerpt.trim(), coverImageUrl: draft.coverImageUrl?.trim() || null, blocks: draft.blocks };
+    const id = this.postId();
+    const request$ = id === null ? this.api.create(payload) : this.api.update(id, payload);
+    request$.pipe(finalize(() => this.saving.set(false))).subscribe({
+      next: (saved) => {
+        const wasNew = id === null;
+        this.postId.set(saved.id);
+        this.draft.set({ title: saved.title, excerpt: saved.excerpt, coverImageUrl: saved.coverImageUrl, blocks: saved.blocks, status: saved.status, slug: saved.slug });
+        this.notify(wasNew ? 'Artículo creado.' : 'Borrador guardado.');
+        if (wasNew) void this.router.navigate(['/blog', saved.id], { replaceUrl: true });
+        after?.(saved);
+      },
+      error: (error: HttpErrorResponse) => this.notify(error.error?.message ?? 'No se pudo guardar.', true),
+    });
+  }
+
+  publish(): void {
+    const id = this.postId();
+    if (id === null) return;
+    this.save(() => this.api.publish(id).subscribe({
+      next: (published) => { this.draft.update((d) => d ? { ...d, status: published.status, slug: published.slug } : d); this.notify('Artículo publicado.'); },
+      error: () => this.notify('No se pudo publicar.', true),
+    }));
+  }
+
+  unpublish(): void {
+    const id = this.postId();
+    if (id === null) return;
+    this.api.unpublish(id).subscribe({
+      next: (post) => { this.draft.update((d) => d ? { ...d, status: post.status, slug: post.slug } : d); this.notify('Artículo retirado.'); },
+      error: () => this.notify('No se pudo retirar.', true),
+    });
+  }
+
+  add(type: BlogBlock['type']): void {
+    const draft = this.draft();
+    if (!draft) return;
+    const id = crypto.randomUUID();
+    const block: BlogBlock =
+      type === 'paragraph' ? { id, type, data: { text: '' } } :
+      type === 'heading' ? { id, type, data: { text: '', level: 2 } } :
+      type === 'list' ? { id, type, data: { items: [''] } } :
+      type === 'link' ? { id, type, data: { text: '', url: '' } } :
+      { id, type, data: { url: '', alt: '' } };
+    this.draft.set({ ...draft, blocks: [...draft.blocks, block] });
+  }
+
+  remove(index: number): void { const d = this.draft(); if (!d) return; const blocks = [...d.blocks]; blocks.splice(index, 1); this.draft.set({ ...d, blocks }); }
+  move(index: number, offset: number): void { const d = this.draft(); const target = index + offset; if (!d || target < 0 || target >= d.blocks.length) return; const blocks = [...d.blocks]; [blocks[index], blocks[target]] = [blocks[target], blocks[index]]; this.draft.set({ ...d, blocks }); }
+  upload(event: Event): void { const file = (event.target as HTMLInputElement).files?.[0]; const d = this.draft(); if (!file || !d) return; this.uploading.set(true); this.media.uploadImage(file).pipe(finalize(() => this.uploading.set(false))).subscribe({ next: (image) => this.draft.set({ ...d, coverImageUrl: image.url }), error: () => this.notify('No se pudo subir la imagen.', true) }); }
+  mediaUrl(path: string): string { return this.urls.resolve(path); }
+  splitLines(value: string): string[] { return value.split('\n'); }
+  label(block: BlogBlock): string { return { paragraph: 'Párrafo', heading: 'Título', list: 'Lista', link: 'Enlace', image: 'Imagen' }[block.type]; }
   private notify(message: string, failed = false): void { this.message.set(message); this.failed.set(failed); }
 }

@@ -11,6 +11,7 @@ export const routes: Routes = [
   { path: 'sections', component: SectionEditorPageComponent, canActivate: [authGuard] },
   { path: 'sections/:key', component: SectionEditorPageComponent, canActivate: [authGuard] },
   { path: 'blog', component: BlogListPageComponent, canActivate: [authGuard] },
+  { path: 'blog/new', component: BlogEditorPageComponent, canActivate: [authGuard] },
   { path: 'blog/:id', component: BlogEditorPageComponent, canActivate: [authGuard] },
   { path: '**', redirectTo: 'sections' },
 ];
