@@ -28,6 +28,7 @@ type EditorDraft = SaveBlogPost & { status: BlogPost['status'] | null; slug: str
               @if (!isNew()) {
                 @if (article.status === 'PUBLISHED') { <button class="secondary-button" type="button" (click)="unpublish()">Retirar</button> }
                 @else { <button class="secondary-button" type="button" (click)="publish()">Publicar</button> }
+                <button class="secondary-button text-red-600 hover:text-red-800" type="button" [disabled]="deleting()" (click)="removePost()">{{ deleting() ? 'Eliminando...' : 'Eliminar' }}</button>
               }
               <button class="primary-button" type="button" [disabled]="saving() || !canSave()" (click)="save()">{{ saving() ? 'Guardando...' : (isNew() ? 'Crear artículo' : 'Guardar borrador') }}</button>
             </div>
@@ -92,6 +93,7 @@ export class BlogEditorPageComponent {
   readonly postId = signal<number | null>(null);
   readonly draft = signal<EditorDraft | null>(null);
   readonly saving = signal(false);
+  readonly deleting = signal(false);
   readonly uploading = signal(false);
   readonly message = signal('');
   readonly failed = signal(false);
@@ -150,6 +152,19 @@ export class BlogEditorPageComponent {
     this.api.unpublish(id).subscribe({
       next: (post) => { this.draft.update((d) => d ? { ...d, status: post.status, slug: post.slug } : d); this.notify('Artículo retirado.'); },
       error: () => this.notify('No se pudo retirar.', true),
+    });
+  }
+
+  removePost(): void {
+    const id = this.postId();
+    const draft = this.draft();
+    if (id === null || !draft || this.deleting()) return;
+    const confirmed = window.confirm(`¿Eliminar "${draft.title || 'Sin título'}"? Esta acción no se puede deshacer.`);
+    if (!confirmed) return;
+    this.deleting.set(true);
+    this.api.delete(id).pipe(finalize(() => this.deleting.set(false))).subscribe({
+      next: () => void this.router.navigate(['/blog']),
+      error: () => this.notify('No se pudo eliminar el artículo.', true),
     });
   }
 

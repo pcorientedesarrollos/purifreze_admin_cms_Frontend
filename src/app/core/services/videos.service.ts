@@ -2,7 +2,7 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { environment } from '../../../environments/environment';
-import { CmsVideo } from '../models/video';
+import { CmsVideo, VideoPlacement } from '../models/video';
 
 export type CreateVideo = Omit<CmsVideo, 'id' | 'sortOrder'> & { sortOrder?: number };
 export type UpdateVideo = Partial<Omit<CmsVideo, 'id'>>;
@@ -12,8 +12,9 @@ export class VideosService {
   private readonly http = inject(HttpClient);
   private readonly endpoint = `${environment.apiUrl}/videos`;
 
-  list(): Observable<CmsVideo[]> {
-    return this.http.get<CmsVideo[]>(this.endpoint);
+  list(placement?: VideoPlacement): Observable<CmsVideo[]> {
+    const options = placement ? { params: { placement } } : undefined;
+    return this.http.get<CmsVideo[]>(this.endpoint, options);
   }
 
   create(dto: CreateVideo): Observable<CmsVideo> {

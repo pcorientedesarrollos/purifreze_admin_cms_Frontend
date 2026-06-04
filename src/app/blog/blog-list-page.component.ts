@@ -1,5 +1,6 @@
 import { Component, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
+import { finalize } from 'rxjs';
 import { BlogPost } from '../core/models/blog';
 import { BlogService } from '../core/services/blog.service';
 import { AdminShellComponent } from '../layout/admin-shell.component';
@@ -17,10 +18,18 @@ import { AdminShellComponent } from '../layout/admin-shell.component';
         @if (error()) { <p class="mt-6 text-sm font-bold text-red-600">{{ error() }}</p> }
         <section class="mt-8 grid gap-3">
           @for (post of posts(); track post.id) {
-            <a [routerLink]="['/blog', post.id]" class="grid gap-2 rounded-2xl border border-blue-100 bg-[#fbfdff] p-5 transition hover:border-blue-300 sm:grid-cols-[1fr_auto]">
-              <div><h2 class="font-display text-2xl font-bold text-blue-950">{{ post.title }}</h2><p class="mt-1 text-sm text-blue-950/55">{{ post.excerpt }}</p></div>
-              <span class="self-start rounded-full px-3 py-1 text-xs font-extrabold" [class.bg-green-100]="post.status === 'PUBLISHED'" [class.text-green-700]="post.status === 'PUBLISHED'" [class.bg-amber-100]="post.status === 'DRAFT'" [class.text-amber-700]="post.status === 'DRAFT'">{{ post.status === 'PUBLISHED' ? 'Publicado' : 'Borrador' }}</span>
-            </a>
+            <article class="grid gap-4 rounded-2xl border border-blue-100 bg-[#fbfdff] p-5 transition hover:border-blue-300 sm:grid-cols-[1fr_auto]">
+              <a [routerLink]="['/blog', post.id]" class="min-w-0">
+                <h2 class="font-display text-2xl font-bold text-blue-950">{{ post.title }}</h2>
+                <p class="mt-1 text-sm text-blue-950/55">{{ post.excerpt }}</p>
+              </a>
+              <div class="flex flex-wrap items-start gap-2 sm:justify-end">
+                <span class="rounded-full px-3 py-1 text-xs font-extrabold" [class.bg-green-100]="post.status === 'PUBLISHED'" [class.text-green-700]="post.status === 'PUBLISHED'" [class.bg-amber-100]="post.status === 'DRAFT'" [class.text-amber-700]="post.status === 'DRAFT'">{{ post.status === 'PUBLISHED' ? 'Publicado' : 'Borrador' }}</span>
+                <button type="button" class="secondary-button !px-3 !py-1.5 text-xs text-red-600 hover:text-red-800" [disabled]="deletingId() === post.id" (click)="remove(post)">
+                  {{ deletingId() === post.id ? 'Eliminando...' : 'Eliminar' }}
+                </button>
+              </div>
+            </article>
           } @empty {
             <div class="rounded-2xl border border-dashed border-blue-200 bg-blue-50/60 p-10 text-center text-sm text-blue-950/55">Todavía no hay artículos. Crea el primero para comenzar.</div>
           }
@@ -33,7 +42,19 @@ export class BlogListPageComponent {
   private readonly api = inject(BlogService);
   readonly posts = signal<BlogPost[]>([]);
   readonly error = signal('');
+  readonly deletingId = signal<number | null>(null);
 
   constructor() { this.load(); }
   load(): void { this.api.list().subscribe({ next: (posts) => this.posts.set(posts), error: () => this.error.set('No se pudo cargar el blog.') }); }
+
+  remove(post: BlogPost): void {
+    const confirmed = window.confirm(`¿Eliminar "${post.title}"? Esta acción no se puede deshacer.`);
+    if (!confirmed || this.deletingId()) return;
+    this.error.set('');
+    this.deletingId.set(post.id);
+    this.api.delete(post.id).pipe(finalize(() => this.deletingId.set(null))).subscribe({
+      next: () => this.posts.update((posts) => posts.filter((item) => item.id !== post.id)),
+      error: () => this.error.set('No se pudo eliminar el artículo.'),
+    });
+  }
 }

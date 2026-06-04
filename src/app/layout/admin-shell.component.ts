@@ -47,9 +47,14 @@ import { AuthService } from '../core/services/auth.service';
         </nav>
       </aside>
 
-      <main class="min-w-0 bg-[#f4f8fc]">
+      <main class="min-w-0 bg-[#f4f8fc] pb-24">
         <header class="flex min-h-16 items-center justify-between border-b border-blue-100 bg-[#fbfdff]/95 px-5 py-3 sm:px-8">
-          <p class="text-xs font-bold uppercase tracking-[.2em] text-blue-950/55">Administrador de contenido</p>
+          <div class="flex items-center gap-3">
+            <button type="button" class="secondary-button !px-3 !py-2 text-xs" (click)="goBack()">
+              <i class="fa-solid fa-arrow-left mr-1.5"></i>Volver
+            </button>
+            <p class="text-xs font-bold uppercase tracking-[.2em] text-blue-950/55">Administrador de contenido</p>
+          </div>
           <div class="flex items-center gap-4">
             <a href="http://localhost:4321" target="_blank" class="text-sm font-bold text-blue-700 transition hover:text-blue-950">Ver landing <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-xs"></i></a>
             <button type="button" class="text-sm font-bold text-blue-700 transition hover:text-blue-950" (click)="logout()">Salir</button>
@@ -64,5 +69,12 @@ export class AdminShellComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   readonly catalog = sectionCatalog;
+  goBack(): void {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    void this.router.navigate(['/sections']);
+  }
   logout(): void { this.auth.logout().subscribe({ next: () => void this.router.navigate(['/login']) }); }
 }

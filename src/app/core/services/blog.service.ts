@@ -16,4 +16,5 @@ export class BlogService {
   update(id: number, post: SaveBlogPost): Observable<BlogPost> { return this.http.patch<BlogPost>(`${this.endpoint}/${id}`, post, this.options); }
   publish(id: number): Observable<BlogPost> { return this.http.post<BlogPost>(`${this.endpoint}/${id}/publish`, {}, this.options); }
   unpublish(id: number): Observable<BlogPost> { return this.http.post<BlogPost>(`${this.endpoint}/${id}/unpublish`, {}, this.options); }
+  delete(id: number): Observable<void> { return this.http.delete<void>(`${this.endpoint}/${id}`, this.options); }
 }

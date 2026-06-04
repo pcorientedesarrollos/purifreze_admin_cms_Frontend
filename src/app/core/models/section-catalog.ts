@@ -1,4 +1,6 @@
-export type SectionEditorKind = 'comparison' | 'faq' | 'videos' | 'testimonials';
+import { VideoPlacement } from './video';
+
+export type SectionEditorKind = 'comparison' | 'faq' | 'use-cards' | 'videos' | 'testimonials';
 
 export interface SectionCatalogItem {
   key: string;
@@ -7,6 +9,7 @@ export interface SectionCatalogItem {
   description: string;
   icon: string;
   editor: SectionEditorKind;
+  videoPlacement?: VideoPlacement;
 }
 
 export const sectionCatalog: SectionCatalogItem[] = [
@@ -19,12 +22,21 @@ export const sectionCatalog: SectionCatalogItem[] = [
     editor: 'testimonials',
   },
   {
+    key: 'uses',
+    title: 'Usos del purificador de agua',
+    label: 'Usos',
+    description: 'Tarjetas dinámicas de texto, imagen y video para la sección Usos.',
+    icon: 'fa-screwdriver-wrench',
+    editor: 'use-cards',
+  },
+  {
     key: 'videos',
     label: 'Videos',
     title: 'La hidratación comienza desde el agua',
     description: 'Galería de videos de la landing.',
     icon: 'fa-circle-play',
     editor: 'videos',
+    videoPlacement: 'gallery',
   },
   {
     key: 'comparison',

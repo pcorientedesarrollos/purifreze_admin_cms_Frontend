@@ -10,10 +10,12 @@ import { FaqItem } from '../core/models/faq';
 import { SectionCatalogItem, sectionByKey, sectionCatalog } from '../core/models/section-catalog';
 import { isTempId } from '../core/models/temp-id';
 import { CmsTestimonial } from '../core/models/testimonial';
+import { UseCard } from '../core/models/use-card';
 import { CmsVideo } from '../core/models/video';
 import { ComparisonRowsService, CreateComparisonRow, UpdateComparisonRow } from '../core/services/comparison-rows.service';
 import { CreateFaqItem, FaqItemsService, UpdateFaqItem } from '../core/services/faq-items.service';
 import { CreateTestimonial, TestimonialsService, UpdateTestimonial } from '../core/services/testimonials.service';
+import { CreateUseCard, UpdateUseCard, UseCardsService } from '../core/services/use-cards.service';
 import { CreateVideo, UpdateVideo, VideosService } from '../core/services/videos.service';
 import { MediaService } from '../core/services/media.service';
 import { AdminShellComponent } from '../layout/admin-shell.component';
@@ -21,13 +23,14 @@ import { SaveBarComponent, SaveStatus } from '../layout/save-bar.component';
 import { ComparisonEditorComponent } from './comparison-editor.component';
 import { FaqEditorComponent } from './faq-editor.component';
 import { TestimonialsEditorComponent } from './testimonials-editor.component';
+import { UseCardsEditorComponent } from './use-cards-editor.component';
 import { VideosEditorComponent } from './videos-editor.component';
 
 type Identified = { id: number };
 
 @Component({
   selector: 'app-section-editor-page',
-  imports: [CommonModule, FormsModule, AdminShellComponent, SaveBarComponent, ComparisonEditorComponent, FaqEditorComponent, VideosEditorComponent, TestimonialsEditorComponent],
+  imports: [CommonModule, FormsModule, AdminShellComponent, SaveBarComponent, ComparisonEditorComponent, FaqEditorComponent, UseCardsEditorComponent, VideosEditorComponent, TestimonialsEditorComponent],
   template: `
     <app-admin-shell>
       <div class="mx-auto max-w-6xl px-5 py-7 sm:px-8 sm:py-9">
@@ -48,7 +51,10 @@ type Identified = { id: number };
                 <app-testimonials-editor [testimonials]="testimonials()" (testimonialsChange)="onTestimonialsChange($event)" (queuedDelete)="queueDelete($event)" />
               }
               @case ('videos') {
-                <app-videos-editor [videos]="videos()" (videosChange)="onVideosChange($event)" (queuedDelete)="queueDelete($event)" />
+                <app-videos-editor [videos]="videos()" [placement]="s.videoPlacement ?? 'gallery'" (videosChange)="onVideosChange($event)" (queuedDelete)="queueDelete($event)" />
+              }
+              @case ('use-cards') {
+                <app-use-cards-editor [cards]="useCards()" (cardsChange)="onUseCardsChange($event)" />
               }
               @case ('comparison') {
                 <app-comparison-editor [badges]="badges()" (badgesChange)="onBadgesChange($event)" />
@@ -77,6 +83,7 @@ type Identified = { id: number };
 export class SectionEditorPageComponent {
   private readonly testimonialsApi = inject(TestimonialsService);
   private readonly videosApi = inject(VideosService);
+  private readonly useCardsApi = inject(UseCardsService);
   private readonly comparisonApi = inject(ComparisonRowsService);
   private readonly faqApi = inject(FaqItemsService);
   private readonly media = inject(MediaService);
@@ -88,11 +95,13 @@ export class SectionEditorPageComponent {
 
   readonly testimonials = signal<CmsTestimonial[]>([]);
   readonly videos = signal<CmsVideo[]>([]);
+  readonly useCards = signal<UseCard[]>([]);
   readonly badges = signal<ComparisonBadge[]>([]);
   readonly faqs = signal<FaqItem[]>([]);
 
   private originalTestimonials: CmsTestimonial[] = [];
   private originalVideos: CmsVideo[] = [];
+  private originalUseCards: UseCard[] = [];
   private originalBadges: ComparisonBadge[] = [];
   private originalFaqs: FaqItem[] = [];
 
@@ -128,8 +137,14 @@ export class SectionEditorPageComponent {
         });
         break;
       case 'videos':
-        this.videosApi.list().subscribe({
+        this.videosApi.list(section.videoPlacement).subscribe({
           next: (items) => { this.originalVideos = items; this.videos.set(structuredClone(items)); this.loading.set(false); },
+          error: () => this.failLoad(),
+        });
+        break;
+      case 'use-cards':
+        this.useCardsApi.list().subscribe({
+          next: (items) => { this.originalUseCards = items; this.useCards.set(structuredClone(items)); this.loading.set(false); },
           error: () => this.failLoad(),
         });
         break;
@@ -156,6 +171,7 @@ export class SectionEditorPageComponent {
 
   onTestimonialsChange(items: CmsTestimonial[]): void { this.testimonials.set(items); this.markDirty(); }
   onVideosChange(items: CmsVideo[]): void { this.videos.set(items); this.markDirty(); }
+  onUseCardsChange(items: UseCard[]): void { this.useCards.set(items); this.markDirty(); }
   onBadgesChange(items: ComparisonBadge[]): void { this.badges.set(items); this.markDirty(); }
   onFaqsChange(items: FaqItem[]): void { this.faqs.set(items); this.markDirty(); }
 
@@ -174,6 +190,9 @@ export class SectionEditorPageComponent {
         break;
       case 'videos':
         this.saveVideos();
+        break;
+      case 'use-cards':
+        this.saveUseCards();
         break;
       case 'comparison':
         this.saveBadges();
@@ -206,22 +225,52 @@ export class SectionEditorPageComponent {
   }
 
   private saveVideos(): void {
+    const placement = this.section()?.videoPlacement ?? 'gallery';
     const draft = this.videos();
     const original = this.originalVideos;
     const createOps = draft.filter((d) => isTempId(d.id)).map((d) => {
-      const dto: CreateVideo = { title: d.title, url: d.url, vertical: d.vertical, isVisible: d.isVisible };
+      const dto: CreateVideo = { title: d.title, url: d.url, placement, vertical: d.vertical, isVisible: d.isVisible };
       return this.videosApi.create(dto);
     });
     const updateOps = draft.filter((d) => !isTempId(d.id)).map((d) => {
       const orig = original.find((o) => o.id === d.id);
       if (!orig) return null;
-      const patch = this.diffPatch<CmsVideo, UpdateVideo>(orig, d, ['title', 'url', 'vertical', 'isVisible']);
+      const patch = this.diffPatch<CmsVideo, UpdateVideo>(orig, d, ['title', 'url', 'placement', 'vertical', 'isVisible']);
       return patch ? this.videosApi.update(d.id, patch) : null;
     }).filter((op): op is NonNullable<typeof op> => op !== null);
     const deleteOps = this.deletedIds(original, draft).map((id) => this.videosApi.delete(id));
     this.runSave([...createOps, ...updateOps, ...deleteOps], () => {
       const finalIds = draft.map((d) => isTempId(d.id) ? null : d.id).filter((id): id is number => id !== null);
       const reorder = this.shouldReorder(original, draft) && finalIds.length === draft.length ? this.videosApi.reorder(finalIds) : null;
+      this.finishSave(reorder, () => this.load(this.section()!));
+    });
+  }
+
+  private saveUseCards(): void {
+    const draft = this.useCards();
+    const original = this.originalUseCards;
+    const createOps = draft.filter((d) => isTempId(d.id)).map((d) => {
+      const dto: CreateUseCard = {
+        type: d.type,
+        title: d.title,
+        description: d.description,
+        icon: d.icon,
+        mediaUrl: d.mediaUrl,
+        altText: d.altText,
+        isVisible: d.isVisible,
+      };
+      return this.useCardsApi.create(dto);
+    });
+    const updateOps = draft.filter((d) => !isTempId(d.id)).map((d) => {
+      const orig = original.find((o) => o.id === d.id);
+      if (!orig) return null;
+      const patch = this.diffPatch<UseCard, UpdateUseCard>(orig, d, ['type', 'title', 'description', 'icon', 'mediaUrl', 'altText', 'isVisible']);
+      return patch ? this.useCardsApi.update(d.id, patch) : null;
+    }).filter((op): op is NonNullable<typeof op> => op !== null);
+    const deleteOps = this.deletedIds(original, draft).map((id) => this.useCardsApi.delete(id));
+    this.runSave([...createOps, ...updateOps, ...deleteOps], () => {
+      const finalIds = draft.map((d) => isTempId(d.id) ? null : d.id).filter((id): id is number => id !== null);
+      const reorder = this.shouldReorder(original, draft) && finalIds.length === draft.length ? this.useCardsApi.reorder(finalIds) : null;
       this.finishSave(reorder, () => this.load(this.section()!));
     });
   }

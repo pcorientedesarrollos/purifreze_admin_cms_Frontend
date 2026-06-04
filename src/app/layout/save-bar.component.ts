@@ -5,7 +5,7 @@ export type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 @Component({
   selector: 'app-save-bar',
   template: `
-    <div class="sticky bottom-0 z-30 border-t border-blue-100 bg-[#fbfdff]/96 px-5 py-3 shadow-[0_-12px_34px_rgba(11,45,89,.08)] backdrop-blur sm:px-8">
+    <div class="fixed bottom-0 left-0 right-0 z-50 border-t border-blue-100 bg-[#fbfdff]/96 px-5 py-3 shadow-[0_-12px_34px_rgba(11,45,89,.08)] backdrop-blur sm:px-8 lg:left-[272px]">
       <div class="mx-auto flex max-w-6xl items-center justify-between gap-4">
         <div class="flex items-center gap-2 text-sm font-semibold" [class]="tone()">
           @if (status() === 'saving') {
