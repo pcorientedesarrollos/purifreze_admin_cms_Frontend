@@ -733,6 +733,10 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     const el = document.createElement('div');
     el.className = 'ed-blkmenu';
     el.innerHTML = `
+      <div class="ed-blkmenu-header">
+        <span>Opciones</span>
+        <button class="ed-blkmenu-close" title="Cerrar">✕</button>
+      </div>
       <div class="ed-blkmenu-item" data-action="up">↑ Subir</div>
       <div class="ed-blkmenu-item" data-action="down">↓ Bajar</div>
       <div class="ed-blkmenu-item" data-action="dup">⎘ Duplicar</div>
@@ -743,6 +747,14 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     el.style.top = (r.bottom + 6) + 'px';
     if (r.bottom + 180 > window.innerHeight) el.style.top = (r.top - 186) + 'px';
 
+    // Close button
+    const closeBtn = el.querySelector('.ed-blkmenu-close') as HTMLElement;
+    closeBtn.onclick = () => {
+      this.closeBlkMenu();
+      blk.classList.remove('menuopen');
+    };
+
+    // Menu items
     el.querySelectorAll('.ed-blkmenu-item').forEach((item) => {
       (item as HTMLElement).onclick = () => {
         const action = (item as HTMLElement).dataset['action'];
@@ -754,6 +766,18 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
 
     document.body.appendChild(el);
     this.blkMenuEl = el;
+
+    // Close on click outside
+    setTimeout(() => {
+      const handleOutsideClick = (e: MouseEvent) => {
+        if (!el.contains(e.target as Node) && !anchor.contains(e.target as Node)) {
+          this.closeBlkMenu();
+          blk.classList.remove('menuopen');
+          document.removeEventListener('click', handleOutsideClick);
+        }
+      };
+      document.addEventListener('click', handleOutsideClick);
+    }, 0);
   }
 
   private executeBlkAction(blk: HTMLElement, action: string): void {
