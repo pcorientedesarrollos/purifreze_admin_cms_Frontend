@@ -301,7 +301,10 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     if (!d) return;
     const slot = this.coverSlot.nativeElement;
     if (d.coverImageUrl) {
-      slot.innerHTML = `<div class="ed-cover" style="background-image:url('${this.urls.resolve(d.coverImageUrl)}')">
+      const maxHeightMap = { small: '180px', medium: '240px', large: '320px' };
+      const maxHeight = maxHeightMap[d.coverSize ?? 'medium'];
+      slot.innerHTML = `<div class="ed-cover">
+        <img src="${this.urls.resolve(d.coverImageUrl)}" style="width:100%;height:auto;max-height:${maxHeight};object-fit:contain;display:block" />
         <button class="cover-x" title="Quitar portada">✕</button></div>`;
       slot.querySelector('.cover-x')!.addEventListener('click', () => {
         this.updateField('coverImageUrl', null);
