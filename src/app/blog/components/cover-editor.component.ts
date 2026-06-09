@@ -21,6 +21,15 @@ const COVER_ICONS = ['droplet', 'snow', 'gauge', 'flask'] as const;
           {{ uploading ? 'Subiendo...' : 'Subir imagen' }}
           <input class="sr-only" type="file" accept="image/jpeg,image/png,image/webp" [disabled]="uploading" (change)="uploadChange.emit($event)" />
         </label>
+        
+        <div>
+          <p class="mb-2 text-xs font-bold uppercase tracking-widest text-blue-700">Tamaño de portada</p>
+          <div class="flex gap-2">
+            <button type="button" class="secondary-button" [class.bg-blue-600]="coverSize === 'small'" [class.text-white]="coverSize === 'small'" (click)="coverSizeChange.emit('small')">Pequeño</button>
+            <button type="button" class="secondary-button" [class.bg-blue-600]="coverSize === 'medium'" [class.text-white]="coverSize === 'medium'" (click)="coverSizeChange.emit('medium')">Mediano</button>
+            <button type="button" class="secondary-button" [class.bg-blue-600]="coverSize === 'large'" [class.text-white]="coverSize === 'large'" (click)="coverSizeChange.emit('large')">Grande</button>
+          </div>
+        </div>
       }
 
       @if (mode() === 'icon') {
@@ -59,10 +68,12 @@ export class CoverEditorComponent {
   @Input({ required: true }) coverImageUrl!: string | null;
   @Input({ required: true }) coverColor!: string | null;
   @Input({ required: true }) coverIcon!: string | null;
+  @Input({ required: true }) coverSize!: 'small' | 'medium' | 'large' | null;
   @Input() uploading = false;
   @Output() coverImageChange = new EventEmitter<string | null>();
   @Output() coverColorChange = new EventEmitter<string | null>();
   @Output() coverIconChange = new EventEmitter<string | null>();
+  @Output() coverSizeChange = new EventEmitter<'small' | 'medium' | 'large' | null>();
   @Output() uploadChange = new EventEmitter<Event>();
 
   readonly colors = COVER_COLORS;

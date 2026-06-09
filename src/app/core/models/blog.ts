@@ -16,6 +16,7 @@ export interface BlogPost {
   coverImageUrl: string | null;
   coverColor: string | null;
   coverIcon: string | null;
+  coverSize: 'small' | 'medium' | 'large' | null;
   category: string | null;
   authorName: string | null;
   authorInitials: string | null;
@@ -28,4 +29,4 @@ export interface BlogPost {
   updatedAt: string;
 }
 
-export type SaveBlogPost = Pick<BlogPost, 'title' | 'excerpt' | 'coverImageUrl' | 'coverColor' | 'coverIcon' | 'category' | 'authorName' | 'authorInitials' | 'blocks'>;
+export type SaveBlogPost = Pick<BlogPost, 'title' | 'excerpt' | 'coverImageUrl' | 'coverColor' | 'coverIcon' | 'coverSize' | 'category' | 'authorName' | 'authorInitials' | 'blocks'>;

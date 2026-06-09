@@ -23,6 +23,7 @@ const SLASH_ITEMS: SlashItem[] = [
   { type: 'list', label: 'Lista', icon: '•', hint: 'Viñetas' },
   { type: 'quote', label: 'Cita', icon: '❝', hint: 'Destacar' },
   { type: 'callout', label: 'Resaltado', icon: '!', hint: 'Aviso' },
+  { type: 'link', label: 'Enlace', icon: '🔗', hint: 'Hipervínculo' },
   { type: 'image', label: 'Imagen', icon: '🖼', hint: 'Portada/foto' },
 ];
 
@@ -96,10 +97,12 @@ const SLASH_ITEMS: SlashItem[] = [
                     [coverImageUrl]="article.coverImageUrl"
                     [coverColor]="article.coverColor"
                     [coverIcon]="article.coverIcon"
+                    [coverSize]="article.coverSize"
                     [uploading]="uploading()"
                     (coverImageChange)="onCoverImageChange($event)"
                     (coverColorChange)="onCoverColorChange($event)"
                     (coverIconChange)="onCoverIconChange($event)"
+                    (coverSizeChange)="onCoverSizeChange($event)"
                     (uploadChange)="upload($event)"
                   />
                 </div>
@@ -207,6 +210,7 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
           this.draft.set({
             title: post.title, excerpt: post.excerpt,
             coverImageUrl: post.coverImageUrl, coverColor: post.coverColor ?? null, coverIcon: post.coverIcon ?? null,
+            coverSize: post.coverSize ?? 'medium',
             category: post.category ?? null, authorName: post.authorName ?? null, authorInitials: post.authorInitials ?? null,
             blocks: post.blocks, status: post.status, slug: post.slug, readMin: post.readMin ?? null,
           });
@@ -217,7 +221,7 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
       });
     } else {
       this.draft.set({
-        title: '', excerpt: '', coverImageUrl: null, coverColor: null, coverIcon: null,
+        title: '', excerpt: '', coverImageUrl: null, coverColor: null, coverIcon: null, coverSize: 'medium',
         category: null, authorName: null, authorInitials: null, blocks: [], status: null, slug: null, readMin: null,
       });
     }
@@ -370,6 +374,15 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
       } else {
         content.innerHTML = `<div class="blk-img placeholder"><div>🖼</div><div>Imagen — marcador</div><div style="font-size:12px;color:#94a3b8;font-weight:500">Arrastrá una imagen o hacé clic para subir</div></div>`;
       }
+    } else if (block.type === 'link') {
+      content.contentEditable = 'false';
+      const text = block.data.text || 'Texto del enlace';
+      const url = block.data.url || '';
+      content.innerHTML = `<div class="blk-link" style="display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc">
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#64748b">🔗 Enlace</div>
+        <input class="link-text" placeholder="Texto del enlace" value="${this.escapeHtml(text)}" style="padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;font-weight:500">
+        <input class="link-url" placeholder="https://..." value="${this.escapeHtml(url)}" style="padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;color:#3b82f6">
+      </div>`;
     } else if (block.type === 'list') {
       const tag = 'ul';
       const items = block.data.items.length > 0 ? block.data.items : [''];
@@ -423,7 +436,16 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     if (!container) return;
 
     container.addEventListener('keydown', (e) => this.onBlockKey(e));
-    container.addEventListener('input', () => { this.updateEmptyHints(); this.scheduleSave(); });
+    container.addEventListener('input', (e) => { 
+      this.updateEmptyHints(); 
+      // Track link block inputs
+      const target = e.target as HTMLElement;
+      if (target.classList.contains('link-text') || target.classList.contains('link-url')) {
+        this.scheduleSave();
+      } else {
+        this.scheduleSave();
+      }
+    });
     container.addEventListener('click', (e) => this.onBlockClick(e));
     container.addEventListener('focusin', () => this.updateEmptyHints());
 
@@ -685,6 +707,11 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
       const after = this.createBlockElement({ id: crypto.randomUUID(), type: 'paragraph', data: { text: '' } });
       nb.after(after);
       (after.querySelector('.blk-content') as HTMLElement).focus();
+    } else if (item.type === 'link') {
+      const nb = this.createBlockElement({ id: crypto.randomUUID(), type: 'link', data: { text: '', url: '' } });
+      if (this.isBlockEmpty(blk)) blk.replaceWith(nb); else blk.after(nb);
+      const textInput = nb.querySelector('.link-text') as HTMLInputElement;
+      textInput?.focus();
     } else {
       this.convertBlock(blk, item.type);
       const c = blk.querySelector('.blk-content') as HTMLElement;
@@ -955,7 +982,11 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
       }
       case 'quote': return { id, type: 'quote', data: { text: content?.innerHTML ?? '' } };
       case 'callout': return { id, type: 'callout', data: { text: content?.innerHTML ?? '' } };
-      case 'link': return { id, type: 'link', data: { text: content?.textContent?.trim() ?? '', url: content?.querySelector('a')?.href ?? '' } };
+      case 'link': {
+        const textInput = content?.querySelector('.link-text') as HTMLInputElement | null;
+        const urlInput = content?.querySelector('.link-url') as HTMLInputElement | null;
+        return { id, type: 'link', data: { text: textInput?.value ?? '', url: urlInput?.value ?? '' } };
+      }
       case 'image': {
         const img = content?.querySelector('img');
         return { id, type: 'image', data: { url: img?.src ?? '', alt: img?.alt ?? '' } };
@@ -1077,6 +1108,13 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     this.renderCover();
   }
 
+  onCoverSizeChange(value: 'small' | 'medium' | 'large' | null): void {
+    const d = this.draft();
+    if (!d) return;
+    this.draft.set({ ...d, coverSize: value });
+    this.renderCover();
+  }
+
   upload(event: Event): void {
     const file = (event.target as HTMLInputElement).files?.[0];
     const d = this.draft();
@@ -1131,6 +1169,7 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     const payload: SaveBlogPost = {
       title: draft.title.trim(), excerpt: draft.excerpt.trim(),
       coverImageUrl: draft.coverImageUrl?.trim() || null, coverColor: draft.coverColor ?? null, coverIcon: draft.coverIcon ?? null,
+      coverSize: draft.coverSize ?? 'medium',
       category: draft.category?.trim() || null, authorName: draft.authorName?.trim() || null, authorInitials: draft.authorInitials?.trim() || null,
       blocks: draft.blocks,
     };
@@ -1143,6 +1182,7 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
         this.draft.set({
           title: saved.title, excerpt: saved.excerpt, coverImageUrl: saved.coverImageUrl,
           coverColor: saved.coverColor ?? null, coverIcon: saved.coverIcon ?? null,
+          coverSize: saved.coverSize ?? 'medium',
           category: saved.category ?? null, authorName: saved.authorName ?? null, authorInitials: saved.authorInitials ?? null,
           blocks: saved.blocks, status: saved.status, slug: saved.slug, readMin: saved.readMin ?? null,
         });
@@ -1196,5 +1236,14 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     this.toastMsg.set(msg);
     if (this.toastTimer) clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => this.toastMsg.set(''), 2400);
+  }
+
+  private escapeHtml(unsafe: string): string {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   }
 }
