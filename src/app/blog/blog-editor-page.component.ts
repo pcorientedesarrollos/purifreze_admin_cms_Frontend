@@ -27,6 +27,18 @@ const SLASH_ITEMS: SlashItem[] = [
   { type: 'image', label: 'Imagen', icon: '🖼', hint: 'Portada/foto' },
 ];
 
+interface InlineFormatItem { key: string; label: string; icon: string; tag: string; cls: string }
+
+const INLINE_FORMAT_ITEMS: InlineFormatItem[] = [
+  { key: 'bold', label: 'Negrita', icon: 'B', tag: 'b', cls: '' },
+  { key: 'italic', label: 'Cursiva', icon: 'i', tag: 'i', cls: '' },
+  { key: 'underline', label: 'Subrayado', icon: 'U', tag: 'u', cls: '' },
+  { key: 'link', label: 'Enlace', icon: '🔗', tag: 'a', cls: '' },
+  { key: 'blue', label: 'Texto azul', icon: 'A', tag: 'span', cls: 'inline-blue' },
+  { key: 'green', label: 'Texto verde', icon: 'A', tag: 'span', cls: 'inline-green' },
+  { key: 'orange', label: 'Texto naranja', icon: 'A', tag: 'span', cls: 'inline-orange' },
+];
+
 @Component({
   selector: 'app-blog-editor-page',
   imports: [FormsModule, CoverEditorComponent, SeoFieldsComponent],
@@ -194,6 +206,11 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
   private slashIdx = 0;
   private selToolEl: HTMLElement | null = null;
   private blkMenuEl: HTMLElement | null = null;
+  private inlineMenuEl: HTMLElement | null = null;
+  private inlineMenuBlk: HTMLElement | null = null;
+  private inlineMenuIdx = 0;
+  private savedInlineRange: Range | null = null;
+  private inlineMenuOutsideHandler: ((ev: MouseEvent) => void) | null = null;
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Bound handlers for proper cleanup (Bug 2)
@@ -234,6 +251,7 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.closeSlash();
+    this.closeInlineMenu();
     this.closeSelTool();
     this.closeBlkMenu();
     if (this.saveTimer) clearTimeout(this.saveTimer);
@@ -477,14 +495,68 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     const blk = content.closest('.blk') as HTMLElement;
     const type = blk.dataset['type'] ?? 'p';
 
-    // Slash menu
+    // Block slash menu: / in empty block
     if (e.key === '/' && this.isBlockEmpty(content) && type !== 'list') {
       setTimeout(() => this.openSlash(blk), 0);
       return;
     }
+
+    // Inline format menu: / in non-empty text block
+    if (e.key === '/' && !this.isBlockEmpty(content) && this.isTextualType(type) && type !== 'list') {
+      e.preventDefault();
+      if (this.inlineMenuEl) {
+        this.closeInlineMenu();
+        return;
+      }
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return;
+      const range = sel.getRangeAt(0);
+      let savedRange = range.cloneRange();
+      // Compute menu position before creating the menu
+      let menuTop: number;
+      let menuLeft: number;
+      const rect = range.getBoundingClientRect();
+      if (rect.width > 0 || rect.height > 0) {
+        menuTop = rect.bottom + 6;
+        menuLeft = rect.left;
+      } else {
+        // Collapsed caret — insert temporary marker to measure position
+        const marker = document.createElement('span');
+        marker.textContent = '\u200B';
+        range.insertNode(marker);
+        const mRect = marker.getBoundingClientRect();
+        menuTop = mRect.bottom + 6;
+        menuLeft = mRect.left - 10;
+        savedRange = document.createRange();
+        savedRange.setStartBefore(marker);
+        savedRange.collapse(true);
+        marker.remove();
+      }
+      this.openInlineMenu(content, menuTop, menuLeft, savedRange);
+      return;
+    }
+
+    // Keyboard navigation for open menus
+    if (this.inlineMenuEl) {
+      if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
+        this.inlineMenuKey(e);
+        return;
+      }
+      this.closeInlineMenu();
+    }
+
     if (this.slashEl) {
       if (['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
         this.slashKey(e);
+        return;
+      }
+    }
+
+    // Space at the end of an inline-format span → exit the format: insert the
+    // space OUTSIDE the span so following text is unformatted.
+    if (e.key === ' ' && !e.shiftKey) {
+      if (this.escapeInlineSpanWithSpace(content)) {
+        e.preventDefault();
         return;
       }
     }
@@ -641,6 +713,7 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
 
   private openSlash(blk: HTMLElement): void {
     this.closeSlash();
+    this.closeInlineMenu();
     this.slashBlk = blk;
     this.slashIdx = 0;
 
@@ -731,6 +804,245 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
 
   private closeSlash(): void {
     if (this.slashEl) { this.slashEl.remove(); this.slashEl = null; this.slashBlk = null; }
+  }
+
+  // ═══════════════════════════════════════════════
+  // INLINE FORMAT MENU
+  // ═══════════════════════════════════════════════
+
+  private isTextualType(type: string): boolean {
+    return ['p', 'h2', 'h3', 'quote', 'callout'].includes(type);
+  }
+
+  private openInlineMenu(content: HTMLElement, menuTop: number, menuLeft: number, savedRange: Range): void {
+    this.closeInlineMenu();
+    this.closeSlash();
+    this.inlineMenuBlk = content;
+    this.inlineMenuIdx = 0;
+    this.savedInlineRange = savedRange.cloneRange();
+
+    const el = document.createElement('div');
+    el.className = 'ed-inline-menu';
+    el.innerHTML = `<div class="im-head">Formato inline</div>` +
+      INLINE_FORMAT_ITEMS.map((f, i) =>
+        `<div class="im-item ${i === 0 ? 'sel' : ''}" data-idx="${i}">
+          <span class="im-icon">${f.icon}</span>${f.label}
+        </div>`
+      ).join('');
+
+    el.querySelectorAll('.im-item').forEach((item) => {
+      (item as HTMLElement).onmousedown = (ev) => {
+        ev.preventDefault(); // Prevent selection loss
+        this.chooseInlineMenu(Number((item as HTMLElement).dataset['idx']));
+      };
+    });
+
+    document.body.appendChild(el);
+    this.inlineMenuEl = el;
+
+    // Apply viewport constraints
+    const menuHeight = el.offsetHeight || 340;
+    if (menuTop + menuHeight > window.innerHeight) {
+      menuTop = Math.max(8, menuTop - menuHeight - 20);
+    }
+    menuLeft = Math.max(8, Math.min(menuLeft, window.innerWidth - 260));
+
+    el.style.top = menuTop + 'px';
+    el.style.left = menuLeft + 'px';
+
+    // Close on outside click
+    this.inlineMenuOutsideHandler = (ev: MouseEvent) => {
+      if (!el.contains(ev.target as Node)) this.closeInlineMenu();
+    };
+    setTimeout(() => document.addEventListener('mousedown', this.inlineMenuOutsideHandler!), 0);
+  }
+
+  private inlineMenuKey(e: KeyboardEvent): void {
+    e.preventDefault();
+    const items = this.inlineMenuEl?.querySelectorAll('.im-item');
+    if (!items) return;
+
+    if (e.key === 'Escape') { this.closeInlineMenu(); return; }
+    if (e.key === 'Enter') { this.chooseInlineMenu(this.inlineMenuIdx); return; }
+    if (e.key === 'ArrowDown') this.inlineMenuIdx = (this.inlineMenuIdx + 1) % items.length;
+    if (e.key === 'ArrowUp') this.inlineMenuIdx = (this.inlineMenuIdx - 1 + items.length) % items.length;
+
+    items.forEach((it, i) => it.classList.toggle('sel', i === this.inlineMenuIdx));
+    items[this.inlineMenuIdx]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  private chooseInlineMenu(idx: number): void {
+    const item = INLINE_FORMAT_ITEMS[idx];
+    if (!item) { this.closeInlineMenu(); return; }
+    this.applyInlineFormat(item);
+  }
+
+  private applyInlineFormat(item: InlineFormatItem): void {
+    if (!this.savedInlineRange) { this.closeInlineMenu(); return; }
+
+    const sel = window.getSelection();
+    if (!sel) { this.closeInlineMenu(); return; }
+
+    // Restore saved range
+    sel.removeAllRanges();
+    sel.addRange(this.savedInlineRange);
+    const range = sel.getRangeAt(0);
+
+    if (item.key === 'link') {
+      // For links, prompt for URL first
+      const url = prompt('Pegá el enlace (URL):', 'https://');
+      if (!url) { this.closeInlineMenu(); return; }
+
+      if (range.collapsed) {
+        const a = document.createElement('a');
+        a.href = url;
+        a.textContent = 'enlace';
+        range.insertNode(a);
+        this.placeCaretAfterInline(a, sel, true);
+      } else {
+        try {
+          const a = document.createElement('a');
+          a.href = url;
+          range.surroundContents(a);
+          this.placeCaretAfterInline(a, sel, false);
+        } catch {
+          const fragment = range.extractContents();
+          const a = document.createElement('a');
+          a.href = url;
+          a.appendChild(fragment);
+          range.insertNode(a);
+          this.placeCaretAfterInline(a, sel, false);
+        }
+      }
+    } else if (range.collapsed) {
+      // No selection — create an empty formatted span and drop the caret
+      // inside it. A zero-width space outside acts as the escape point so
+      // ArrowRight/typing-out can leave the format. The ZWS inside keeps the
+      // empty span alive while typing.
+      const el = document.createElement(item.tag);
+      if (item.cls) el.className = item.cls;
+      el.appendChild(document.createTextNode('\u200B'));
+      range.insertNode(el);
+
+      // Escape point right after the span
+      const escape = document.createTextNode('\u200B');
+      el.parentNode?.insertBefore(escape, el.nextSibling);
+
+      // Caret inside the span, after its ZWS
+      const inner = el.firstChild as Text;
+      const newRange = document.createRange();
+      newRange.setStart(inner, inner.length);
+      newRange.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    } else {
+      // Has selection — wrap it
+      let wrapped: HTMLElement | null = null;
+      try {
+        const el = document.createElement(item.tag);
+        if (item.cls) el.className = item.cls;
+        range.surroundContents(el);
+        wrapped = el;
+      } catch {
+        // Fallback for cross-node selections
+        const fragment = range.extractContents();
+        const el = document.createElement(item.tag);
+        if (item.cls) el.className = item.cls;
+        el.appendChild(fragment);
+        range.insertNode(el);
+        wrapped = el;
+      }
+      if (wrapped) this.placeCaretAfterInline(wrapped, sel, false);
+    }
+
+    this.closeInlineMenu();
+    this.scheduleSave();
+  }
+
+  /**
+   * Coloca el cursor fuera del span de formato recién aplicado, usando un
+   * zero-width space como punto de escape para que lo siguiente que escriba
+   * el usuario NO herede el formato. Esos caracteres se limpian al guardar.
+   */
+  private placeCaretAfterInline(node: HTMLElement, sel: Selection, selectContent: boolean): void {
+    if (selectContent) {
+      const r = document.createRange();
+      r.selectNodeContents(node);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      return;
+    }
+    const escape = document.createTextNode('\u200B');
+    node.parentNode?.insertBefore(escape, node.nextSibling);
+    const r = document.createRange();
+    r.setStart(escape, 1);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  /** Tags/clases que se consideran formato inline para el "escape" del caret. */
+  private isInlineFormatNode(node: Node | null): node is HTMLElement {
+    if (!node || node.nodeType !== Node.ELEMENT_NODE) return false;
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    return ['b', 'strong', 'i', 'em', 'u', 'a'].includes(tag) ||
+      el.classList.contains('inline-blue') ||
+      el.classList.contains('inline-green') ||
+      el.classList.contains('inline-orange');
+  }
+
+  /**
+   * Si el caret está al final del contenido de un span de formato inline,
+   * inserta el espacio FUERA del span y deja el caret ahí, de modo que el
+   * texto siguiente ya no herede el formato. Devuelve true si manejó el espacio.
+   */
+  private escapeInlineSpanWithSpace(content: HTMLElement): boolean {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !sel.isCollapsed) return false;
+
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+
+    // Solo texto dentro del span
+    if (node.nodeType !== Node.TEXT_NODE) return false;
+    const textNode = node as Text;
+
+    // Debe estar al final del nodo de texto
+    if (range.startOffset < textNode.length) return false;
+
+    const parent = textNode.parentElement;
+    if (!this.isInlineFormatNode(parent) || parent === content) return false;
+
+    // Debe ser el último nodo del span (final real del formato)
+    if (textNode !== parent.lastChild) return false;
+
+    // Insertar un espacio fuera del span. Usamos non-breaking space para que
+    // el navegador no lo colapse al borde del nodo (evita el "doble espacio").
+    // Se normaliza a espacio normal al guardar (cleanInlineHtml).
+    const spaceNode = document.createTextNode('\u00A0');
+    parent.parentNode?.insertBefore(spaceNode, parent.nextSibling);
+
+    const r = document.createRange();
+    r.setStart(spaceNode, spaceNode.length);
+    r.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(r);
+    this.scheduleSave();
+    return true;
+  }
+
+  private closeInlineMenu(): void {
+    if (this.inlineMenuEl) {
+      this.inlineMenuEl.remove();
+      this.inlineMenuEl = null;
+    }
+    if (this.inlineMenuOutsideHandler) {
+      document.removeEventListener('mousedown', this.inlineMenuOutsideHandler);
+      this.inlineMenuOutsideHandler = null;
+    }
+    this.inlineMenuBlk = null;
+    this.savedInlineRange = null;
   }
 
   private convertBlock(blk: HTMLElement, type: string): void {
@@ -970,21 +1282,23 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     const content = blk.querySelector('.blk-content') as HTMLElement;
     const id = blk.dataset['blockId'] ?? crypto.randomUUID();
 
+    const html = () => this.cleanInlineHtml(content?.innerHTML ?? '');
+
     switch (type) {
-      case 'p': return { id, type: 'paragraph', data: { text: content?.innerHTML ?? '' } };
-      case 'h2': return { id, type: 'heading', data: { text: content?.textContent ?? '', level: 2 } };
-      case 'h3': return { id, type: 'heading', data: { text: content?.textContent ?? '', level: 3 } };
+      case 'p': return { id, type: 'paragraph', data: { text: html() } };
+      case 'h2': return { id, type: 'heading', data: { text: this.cleanInlineHtml(content?.textContent ?? ''), level: 2 } };
+      case 'h3': return { id, type: 'heading', data: { text: this.cleanInlineHtml(content?.textContent ?? ''), level: 3 } };
       case 'list': {
-        const lis = [...(content?.querySelectorAll('li') ?? [])].map(li => li.innerHTML).filter(x => x.trim() !== '');
+        const lis = [...(content?.querySelectorAll('li') ?? [])].map(li => this.cleanInlineHtml(li.innerHTML)).filter(x => x.trim() !== '');
         const strays = [...(content?.childNodes ?? [])]
           .filter(n => n.nodeName !== 'UL' && n.nodeName !== 'OL')
-          .map(n => (n.textContent ?? '').trim())
+          .map(n => this.cleanInlineHtml((n.textContent ?? '').trim()))
           .filter(Boolean);
         const items = [...lis, ...strays];
         return { id, type: 'list', data: { items: items.length > 0 ? items : [''] } };
       }
-      case 'quote': return { id, type: 'quote', data: { text: content?.innerHTML ?? '' } };
-      case 'callout': return { id, type: 'callout', data: { text: content?.innerHTML ?? '' } };
+      case 'quote': return { id, type: 'quote', data: { text: html() } };
+      case 'callout': return { id, type: 'callout', data: { text: html() } };
       case 'link': {
         const textInput = content?.querySelector('.link-text') as HTMLInputElement | null;
         const urlInput = content?.querySelector('.link-url') as HTMLInputElement | null;
@@ -994,7 +1308,7 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
         const img = content?.querySelector('img');
         return { id, type: 'image', data: { url: img?.src ?? '', alt: img?.alt ?? '' } };
       }
-      default: return { id, type: 'paragraph', data: { text: content?.innerHTML ?? '' } };
+      default: return { id, type: 'paragraph', data: { text: html() } };
     }
   }
 
@@ -1020,6 +1334,18 @@ export class BlogEditorPageComponent implements AfterViewInit, OnDestroy {
     const d = document.createElement('div');
     d.innerHTML = html;
     return d.textContent ?? '';
+  }
+
+  /** Elimina zero-width spaces y spans de formato inline vacíos antes de persistir. */
+  private cleanInlineHtml(html: string): string {
+    const d = document.createElement('div');
+    d.innerHTML = html;
+    // Quitar spans/tags inline que quedaron sin texto real
+    d.querySelectorAll('b,strong,i,em,u,a,span,code,small,mark').forEach((el) => {
+      const txt = (el.textContent ?? '').replace(/\u200B/g, '').trim();
+      if (txt === '') el.remove();
+    });
+    return d.innerHTML.replace(/\u200B/g, '').replace(/\u00A0/g, ' ');
   }
 
   private placeCaretEnd(el: HTMLElement): void {
