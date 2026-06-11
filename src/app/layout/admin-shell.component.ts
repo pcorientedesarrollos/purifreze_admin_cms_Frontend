@@ -3,6 +3,7 @@ import { Component, inject } from '@angular/core';
 import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { sectionCatalog } from '../core/models/section-catalog';
 import { AuthService } from '../core/services/auth.service';
+import { environment } from '../../environments/environment';
 
 @Component({
   selector: 'app-admin-shell',
@@ -56,7 +57,7 @@ import { AuthService } from '../core/services/auth.service';
             <p class="text-xs font-bold uppercase tracking-[.2em] text-blue-950/55">Administrador de contenido</p>
           </div>
           <div class="flex items-center gap-4">
-            <a href="http://localhost:4321" target="_blank" class="text-sm font-bold text-blue-700 transition hover:text-blue-950">Ver landing <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-xs"></i></a>
+            <a [href]="landingUrl" target="_blank" rel="noopener" class="text-sm font-bold text-blue-700 transition hover:text-blue-950">Ver landing <i class="fa-solid fa-arrow-up-right-from-square ml-1 text-xs"></i></a>
             <button type="button" class="text-sm font-bold text-blue-700 transition hover:text-blue-950" (click)="logout()">Salir</button>
           </div>
         </header>
@@ -69,6 +70,7 @@ export class AdminShellComponent {
   private readonly auth = inject(AuthService);
   private readonly router = inject(Router);
   readonly catalog = sectionCatalog;
+  readonly landingUrl = environment.landingUrl;
   goBack(): void {
     if (window.history.length > 1) {
       window.history.back();
